@@ -14,18 +14,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +42,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -50,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vano.n8nmobile.engine.NodeRegistry
 import com.vano.n8nmobile.engine.WorkflowExecutionEngine
+import com.vano.n8nmobile.logging.AppLog
 import com.vano.n8nmobile.model.Workflow
 import com.vano.n8nmobile.model.WorkflowEdge
 import com.vano.n8nmobile.model.WorkflowNode
@@ -60,7 +67,7 @@ private val NODE_WIDTH = 170.dp
 private val NODE_HEIGHT = 64.dp
 
 @Composable
-fun WorkflowCanvasScreen() {
+fun WorkflowCanvasScreen(onOpenDrawer: () -> Unit) {
     val context = LocalContext.current
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
@@ -100,6 +107,7 @@ fun WorkflowCanvasScreen() {
 
     fun runWorkflow() {
         runError = null
+        AppLog.add("FLOW", "Menjalankan workflow (${nodes.size} node)")
         val workflowNodes = nodes.map { n ->
             WorkflowNode(id = n.id, type = n.type, config = parseConfigText(n.configText))
         }
@@ -114,36 +122,23 @@ fun WorkflowCanvasScreen() {
                     val label = nodes.firstOrNull { it.id == id }?.type ?: id
                     "$label ($id)\n$items"
                 }
+                AppLog.add("FLOW", "Workflow selesai")
             } catch (e: Exception) {
                 runError = e.message ?: "Terjadi error saat menjalankan workflow"
+                AppLog.add("FLOW_ERROR", runError ?: "")
             }
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Box {
-                Button(onClick = { showAddMenu = true }) {
-                    Text("+ Node")
-                }
-                DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
-                    availableNodeTypes.forEach { info ->
-                        DropdownMenuItem(
-                            text = { Text(info.label) },
-                            onClick = {
-                                addNode(info)
-                                showAddMenu = false
-                            }
-                        )
-                    }
-                }
+            IconButton(onClick = onOpenDrawer) {
+                Icon(Icons.Default.Menu, contentDescription = "Menu")
             }
-            Button(onClick = { runWorkflow() }) {
-                Text("▶ Jalankan")
-            }
+            Text("Flow", style = MaterialTheme.typography.titleMedium)
         }
 
         if (connectSourceId != null) {
@@ -234,6 +229,31 @@ fun WorkflowCanvasScreen() {
                         }
                     }
                 }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Box {
+                Button(onClick = { showAddMenu = true }) {
+                    Text("+ Node")
+                }
+                DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
+                    availableNodeTypes.forEach { info ->
+                        DropdownMenuItem(
+                            text = { Text(info.label) },
+                            onClick = {
+                                addNode(info)
+                                showAddMenu = false
+                            }
+                        )
+                    }
+                }
+            }
+            Button(onClick = { runWorkflow() }) {
+                Text("▶ Jalankan")
             }
         }
     }
