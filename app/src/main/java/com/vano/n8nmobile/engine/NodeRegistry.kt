@@ -1,5 +1,7 @@
 package com.vano.n8nmobile.engine
 
+import android.content.Context
+
 class NodeRegistry {
     private val executors = mutableMapOf<String, NodeExecutor>()
 
@@ -10,12 +12,14 @@ class NodeRegistry {
     fun get(type: String): NodeExecutor? = executors[type]
 
     companion object {
-        fun default(): NodeRegistry {
+        fun default(context: Context): NodeRegistry {
             val registry = NodeRegistry()
             registry.register("manualTrigger", ManualTriggerExecutor())
             registry.register("setData", SetDataExecutor())
             registry.register("delay", DelayExecutor())
             registry.register("condition", ConditionExecutor())
+            registry.register("httpRequest", HttpRequestExecutor())
+            registry.register("notification", NotificationExecutor(context))
             return registry
         }
     }

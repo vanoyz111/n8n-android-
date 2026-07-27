@@ -1,8 +1,11 @@
 package com.vano.n8nmobile
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -23,8 +26,17 @@ import com.vano.n8nmobile.model.WorkflowEdge
 import com.vano.n8nmobile.model.WorkflowNode
 
 class MainActivity : ComponentActivity() {
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
         setContent {
             MaterialTheme {
                 Box(
@@ -35,7 +47,7 @@ class MainActivity : ComponentActivity() {
 
                     LaunchedEffect(Unit) {
                         val workflow = sampleWorkflow()
-                        val engine = WorkflowExecutionEngine(NodeRegistry.default())
+                        val engine = WorkflowExecutionEngine(NodeRegistry.default(applicationContext))
                         val outputs = engine.run(workflow)
                         resultText = outputs.entries.joinToString("\n\n") { (nodeId, items) ->
                             "Node: $nodeId\nOutput: $items"
@@ -52,12 +64,20 @@ class MainActivity : ComponentActivity() {
 private fun sampleWorkflow(): Workflow {
     val nodes = listOf(
         WorkflowNode(id = "1", type = "manualTrigger"),
-        WorkflowNode(id = "2", type = "setData", config = mapOf("pesan" to "halo dari node setData")),
-        WorkflowNode(id = "3", type = "delay", config = mapOf("ms" to "500"))
+        WorkflowNode(
+            id = "2", type = "httpRequest",
+            config = mapOf("url" to "https://jsonplaceholder.typicode.com/todos/1", "method" to "GET")
+        ),
+        WorkflowNode(id = "3", type = "condition", config = mapOf("key" to "httpStatus", "equals" to "200")),
+        WorkflowNode(
+            id = "4", type = "notification",
+            config = mapOf("title" to "Workflow Selesai", "text" to "\$httpStatus")
+        )
     )
     val edges = listOf(
         WorkflowEdge(fromNodeId = "1", toNodeId = "2"),
-        WorkflowEdge(fromNodeId = "2", toNodeId = "3")
+        WorkflowEdge(fromNodeId = "2", toNodeId = "3"),
+        WorkflowEdge(fromNodeId = "3", toNodeId = "4")
     )
     return Workflow(nodes, edges)
 }
