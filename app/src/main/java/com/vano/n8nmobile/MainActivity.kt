@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.vano.n8nmobile.canvas.WorkflowCanvasScreen
 import com.vano.n8nmobile.chat.ChatMessage
+import com.vano.n8nmobile.chat.ChatStore
 import com.vano.n8nmobile.chat.ChatScreen
 import com.vano.n8nmobile.logging.AppLog
 import com.vano.n8nmobile.settings.SettingsScreen
@@ -60,7 +61,7 @@ class MainActivity : ComponentActivity() {
             val settingsStore = remember { SettingsStore(context) }
             var isDark by remember { mutableStateOf(settingsStore.darkTheme) }
             val colors = if (isDark) darkColorScheme() else lightColorScheme()
-            val chatMessages = remember { mutableStateListOf<ChatMessage>() }
+            val chatMessages = remember { mutableStateListOf<ChatMessage>().apply { addAll(ChatStore.load(context)) } }
 
             MaterialTheme(colorScheme = colors) {
                 Surface(modifier = Modifier.fillMaxSize()) {

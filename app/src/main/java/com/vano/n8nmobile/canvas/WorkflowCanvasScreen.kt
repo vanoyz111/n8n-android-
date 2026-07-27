@@ -35,9 +35,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -67,7 +66,13 @@ private val NODE_WIDTH = 170.dp
 private val NODE_HEIGHT = 64.dp
 
 @Composable
-fun WorkflowCanvasScreen(onOpenDrawer: () -> Unit) {
+fun WorkflowCanvasScreen(
+    onOpenDrawer: () -> Unit,
+    nodes: MutableList<CanvasNode>,
+    edges: MutableList<CanvasEdge>,
+    positions: MutableMap<String, Offset>,
+    nextIdState: MutableState<Int>
+) {
     val context = LocalContext.current
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
@@ -75,19 +80,19 @@ fun WorkflowCanvasScreen(onOpenDrawer: () -> Unit) {
     val nodeWidthPx = with(density) { NODE_WIDTH.toPx() }
     val nodeHeightPx = with(density) { NODE_HEIGHT.toPx() }
 
-    val nodes = remember { mutableStateListOf<CanvasNode>() }
-    val edges = remember { mutableStateListOf<CanvasEdge>() }
-    val positions = remember { mutableStateMapOf<String, Offset>() }
-
-    var nextId by remember { mutableStateOf(1) }
     var connectSourceId by remember { mutableStateOf<String?>(null) }
     var editingNode by remember { mutableStateOf<CanvasNode?>(null) }
     var showAddMenu by remember { mutableStateOf(false) }
     var runResult by remember { mutableStateOf<String?>(null) }
     var runError by remember { mutableStateOf<String?>(null) }
 
+    fun persist() {
+        FlowStore.save(context, nodes, edges, positions, nextIdState.value)
+    }
+
     fun addNode(info: NodeTypeInfo) {
-        val id = "n${nextId++}"
+        val id = "n${nextIdState.value}"
+        nextIdState.value = nextIdState.value + 1
         nodes.add(CanvasNode(id, info.type, info.defaultConfig))
         val index = nodes.size - 1
         val col = index % 2
@@ -96,6 +101,7 @@ fun WorkflowCanvasScreen(onOpenDrawer: () -> Unit) {
             40f + col * (nodeWidthPx + 40f),
             40f + row * (nodeHeightPx + 40f)
         )
+        persist()
     }
 
     fun deleteNode(id: String) {
@@ -103,6 +109,7 @@ fun WorkflowCanvasScreen(onOpenDrawer: () -> Unit) {
         positions.remove(id)
         edges.removeAll { it.fromId == id || it.toId == id }
         if (connectSourceId == id) connectSourceId = null
+        persist()
     }
 
     fun runWorkflow() {
@@ -181,11 +188,14 @@ fun WorkflowCanvasScreen(onOpenDrawer: () -> Unit) {
                     .width(NODE_WIDTH)
                     .height(NODE_HEIGHT)
                     .pointerInput(node.id) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            val current = positions[node.id] ?: Offset.Zero
-                            positions[node.id] = current + dragAmount
-                        }
+                        detectDragGestures(
+                            onDragEnd = { persist() },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                val current = positions[node.id] ?: Offset.Zero
+                                positions[node.id] = current + dragAmount
+                            }
+                        )
                     }
                 if (isConnectSource) {
                     cardModifier = cardModifier.border(2.dp, Color(0xFFFF7043), RoundedCornerShape(12.dp))
@@ -200,12 +210,18 @@ fun WorkflowCanvasScreen(onOpenDrawer: () -> Unit) {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(node.type, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
-                            Text(node.id, fontSize = 11.sp, color = Color.Gray)
+                            Text(
+                                node.type,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                color = Color.Black
+                            )
+                            Text(node.id, fontSize = 11.sp, color = Color(0xFF555555))
                         }
                         Row {
                             IconButton(onClick = { editingNode = node }, modifier = Modifier.size(28.dp)) {
-                                Text("✎", fontSize = 14.sp)
+                                Text("✎", fontSize = 14.sp, color = Color.Black)
                             }
                             IconButton(
                                 onClick = {
@@ -217,6 +233,7 @@ fun WorkflowCanvasScreen(onOpenDrawer: () -> Unit) {
                                             val exists = edges.any { it.fromId == sourceId && it.toId == node.id }
                                             if (sourceId != node.id && !exists) {
                                                 edges.add(CanvasEdge(sourceId, node.id))
+                                                persist()
                                             }
                                             null
                                         }
@@ -278,6 +295,7 @@ fun WorkflowCanvasScreen(onOpenDrawer: () -> Unit) {
                 TextButton(onClick = {
                     val index = nodes.indexOfFirst { it.id == node.id }
                     if (index >= 0) nodes[index] = nodes[index].copy(configText = text)
+                    persist()
                     editingNode = null
                 }) { Text("Simpan") }
             },

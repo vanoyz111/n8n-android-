@@ -7,9 +7,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,7 +46,12 @@ fun ChatScreen(messages: MutableList<ChatMessage>, onOpenDrawer: () -> Unit) {
     var input by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .imePadding()
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
             horizontalArrangement = Arrangement.SpaceBetween
@@ -53,7 +59,10 @@ fun ChatScreen(messages: MutableList<ChatMessage>, onOpenDrawer: () -> Unit) {
             IconButton(onClick = onOpenDrawer) {
                 Icon(Icons.Default.Menu, contentDescription = "Menu")
             }
-            IconButton(onClick = { messages.clear() }) {
+            IconButton(onClick = {
+                messages.clear()
+                ChatStore.save(context, messages)
+            }) {
                 Icon(Icons.Default.Add, contentDescription = "Chat Baru")
             }
         }
@@ -72,9 +81,17 @@ fun ChatScreen(messages: MutableList<ChatMessage>, onOpenDrawer: () -> Unit) {
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                reverseLayout = true
             ) {
-                items(messages) { msg ->
+                if (isLoading) {
+                    item {
+                        Row(modifier = Modifier.padding(12.dp)) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        }
+                    }
+                }
+                items(messages.reversed()) { msg ->
                     val isUser = msg.role == "user"
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -88,13 +105,6 @@ fun ChatScreen(messages: MutableList<ChatMessage>, onOpenDrawer: () -> Unit) {
                             shape = RoundedCornerShape(14.dp)
                         ) {
                             Text(msg.text, modifier = Modifier.padding(12.dp))
-                        }
-                    }
-                }
-                if (isLoading) {
-                    item {
-                        Row(modifier = Modifier.padding(12.dp)) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
                         }
                     }
                 }
@@ -120,10 +130,13 @@ fun ChatScreen(messages: MutableList<ChatMessage>, onOpenDrawer: () -> Unit) {
                     messages.add(ChatMessage("user", text))
                     input = ""
                     isLoading = true
+                    ChatStore.save(context, messages)
                     AppLog.add("CHAT", "User: ${text.take(60)}")
                     scope.launch {
-                        val reply = AiClient.sendMessage(context, text)
+                        val historySnapshot = messages.toList()
+                        val reply = AiClient.sendMessage(context, historySnapshot)
                         messages.add(ChatMessage("ai", reply))
+                        ChatStore.save(context, messages)
                         isLoading = false
                     }
                 }
