@@ -26,17 +26,22 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.vano.n8nmobile.canvas.CanvasEdge
+import com.vano.n8nmobile.canvas.CanvasNode
+import com.vano.n8nmobile.canvas.FlowStore
 import com.vano.n8nmobile.canvas.WorkflowCanvasScreen
 import com.vano.n8nmobile.chat.ChatMessage
-import com.vano.n8nmobile.chat.ChatStore
 import com.vano.n8nmobile.chat.ChatScreen
+import com.vano.n8nmobile.chat.ChatStore
 import com.vano.n8nmobile.logging.AppLog
 import com.vano.n8nmobile.settings.SettingsScreen
 import com.vano.n8nmobile.settings.SettingsStore
@@ -61,7 +66,14 @@ class MainActivity : ComponentActivity() {
             val settingsStore = remember { SettingsStore(context) }
             var isDark by remember { mutableStateOf(settingsStore.darkTheme) }
             val colors = if (isDark) darkColorScheme() else lightColorScheme()
+
             val chatMessages = remember { mutableStateListOf<ChatMessage>().apply { addAll(ChatStore.load(context)) } }
+
+            val savedFlow = remember { FlowStore.load(context) }
+            val flowNodes = remember { mutableStateListOf<CanvasNode>().apply { addAll(savedFlow.nodes) } }
+            val flowEdges = remember { mutableStateListOf<CanvasEdge>().apply { addAll(savedFlow.edges) } }
+            val flowPositions = remember { mutableStateMapOf<String, Offset>().apply { putAll(savedFlow.positions) } }
+            val flowNextId = remember { mutableStateOf(savedFlow.nextId) }
 
             MaterialTheme(colorScheme = colors) {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -139,7 +151,11 @@ class MainActivity : ComponentActivity() {
                                 onOpenDrawer = { scope.launch { drawerState.open() } }
                             )
                             AppScreen.FLOW -> WorkflowCanvasScreen(
-                                onOpenDrawer = { scope.launch { drawerState.open() } }
+                                onOpenDrawer = { scope.launch { drawerState.open() } },
+                                nodes = flowNodes,
+                                edges = flowEdges,
+                                positions = flowPositions,
+                                nextIdState = flowNextId
                             )
                             AppScreen.SETTINGS -> SettingsScreen(
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
