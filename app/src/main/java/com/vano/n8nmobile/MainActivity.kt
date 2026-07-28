@@ -103,7 +103,7 @@ class MainActivity : ComponentActivity() {
                         drawerContent = {
                             ModalDrawerSheet {
                                 Text(
-                                    "n8n Mobile",
+                                    "Aiwa",
                                     style = MaterialTheme.typography.titleLarge,
                                     modifier = Modifier.padding(16.dp)
                                 )
