@@ -29,6 +29,10 @@ class SettingsStore(context: Context) {
         get() = prefs.getString(KEY_CUSTOM_MODEL, "") ?: ""
         set(value) = prefs.edit().putString(KEY_CUSTOM_MODEL, value).apply()
 
+    var systemPrompt: String
+        get() = prefs.getString(KEY_SYSTEM_PROMPT, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_SYSTEM_PROMPT, value).apply()
+
     var darkTheme: Boolean
         get() = prefs.getBoolean(KEY_DARK_THEME, true)
         set(value) = prefs.edit().putBoolean(KEY_DARK_THEME, value).apply()
@@ -41,6 +45,7 @@ class SettingsStore(context: Context) {
         private const val KEY_CUSTOM_URL = "custom_base_url"
         private const val KEY_CUSTOM_KEY = "custom_api_key"
         private const val KEY_CUSTOM_MODEL = "custom_model"
+        private const val KEY_SYSTEM_PROMPT = "system_prompt"
         private const val KEY_DARK_THEME = "dark_theme"
     }
 }

@@ -50,6 +50,7 @@ fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit) 
     var customUrl by remember { mutableStateOf(store.customBaseUrl) }
     var customKey by remember { mutableStateOf(store.customApiKey) }
     var customModel by remember { mutableStateOf(store.customModel) }
+    var systemPrompt by remember { mutableStateOf(store.systemPrompt) }
     var darkTheme by remember { mutableStateOf(store.darkTheme) }
     var providerMenuExpanded by remember { mutableStateOf(false) }
     var savedMessage by remember { mutableStateOf<String?>(null) }
@@ -147,6 +148,16 @@ fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit) 
             )
         }
 
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = systemPrompt,
+            onValueChange = { systemPrompt = it },
+            label = { Text("System Prompt (instruksi dasar buat AI)") },
+            placeholder = { Text("Contoh: Selalu jawab pakai Bahasa Indonesia yang santai.") },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 3
+        )
+
         Spacer(modifier = Modifier.height(12.dp))
         Button(onClick = {
             store.aiProvider = provider
@@ -155,6 +166,7 @@ fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit) 
             store.customBaseUrl = customUrl
             store.customApiKey = customKey
             store.customModel = customModel
+            store.systemPrompt = systemPrompt
             savedMessage = "Pengaturan AI disimpan"
             AppLog.add("SETTINGS", "Provider AI disimpan: $provider")
         }) {
