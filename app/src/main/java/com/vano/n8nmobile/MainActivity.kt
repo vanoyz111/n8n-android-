@@ -6,15 +6,21 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -31,6 +37,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
@@ -42,7 +49,6 @@ import com.vano.n8nmobile.canvas.WorkflowCanvasScreen
 import com.vano.n8nmobile.chat.ChatMessage
 import com.vano.n8nmobile.chat.ChatScreen
 import com.vano.n8nmobile.chat.ChatStore
-import com.vano.n8nmobile.logging.AppLog
 import com.vano.n8nmobile.settings.SettingsScreen
 import com.vano.n8nmobile.settings.SettingsStore
 import kotlinx.coroutines.launch
@@ -67,7 +73,18 @@ class MainActivity : ComponentActivity() {
             var isDark by remember { mutableStateOf(settingsStore.darkTheme) }
             val colors = if (isDark) darkColorScheme() else lightColorScheme()
 
-            val chatMessages = remember { mutableStateListOf<ChatMessage>().apply { addAll(ChatStore.load(context)) } }
+            var currentConversationId by remember { mutableStateOf(ChatStore.newId()) }
+            val chatMessages = remember { mutableStateListOf<ChatMessage>() }
+            var conversationsList by remember { mutableStateOf(ChatStore.loadAll(context)) }
+
+            fun persistCurrentConversation() {
+                if (chatMessages.isNotEmpty()) {
+                    val title = chatMessages.firstOrNull { it.role == "user" && it.text.isNotBlank() }
+                        ?.text?.take(40) ?: "Percakapan baru"
+                    ChatStore.save(context, currentConversationId, title, chatMessages.toList())
+                    conversationsList = ChatStore.loadAll(context)
+                }
+            }
 
             val savedFlow = remember { FlowStore.load(context) }
             val flowNodes = remember { mutableStateListOf<CanvasNode>().apply { addAll(savedFlow.nodes) } }
@@ -123,23 +140,44 @@ class MainActivity : ComponentActivity() {
 
                                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                                 Text(
-                                    "Riwayat",
+                                    "Riwayat Chat",
                                     style = MaterialTheme.typography.labelLarge,
                                     modifier = Modifier.padding(horizontal = 16.dp)
                                 )
-                                if (AppLog.entries.isEmpty()) {
+                                if (conversationsList.isEmpty()) {
                                     Text(
                                         "Belum ada riwayat",
                                         style = MaterialTheme.typography.bodySmall,
                                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                                     )
                                 } else {
-                                    AppLog.entries.take(15).forEach { entry ->
-                                        Text(
-                                            "[${entry.tag}] ${entry.message}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                                        )
+                                    conversationsList.forEach { conv ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    chatMessages.clear()
+                                                    chatMessages.addAll(conv.messages)
+                                                    currentConversationId = conv.id
+                                                    currentScreen = AppScreen.CHAT
+                                                    scope.launch { drawerState.close() }
+                                                }
+                                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(conv.title, maxLines = 1, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                            IconButton(onClick = {
+                                                ChatStore.delete(context, conv.id)
+                                                conversationsList = ChatStore.loadAll(context)
+                                                if (conv.id == currentConversationId) {
+                                                    chatMessages.clear()
+                                                    currentConversationId = ChatStore.newId()
+                                                }
+                                            }) {
+                                                Icon(Icons.Default.Delete, contentDescription = "Hapus percakapan")
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -148,7 +186,12 @@ class MainActivity : ComponentActivity() {
                         when (currentScreen) {
                             AppScreen.CHAT -> ChatScreen(
                                 messages = chatMessages,
-                                onOpenDrawer = { scope.launch { drawerState.open() } }
+                                onOpenDrawer = { scope.launch { drawerState.open() } },
+                                onNewChat = {
+                                    chatMessages.clear()
+                                    currentConversationId = ChatStore.newId()
+                                },
+                                onMessagesChanged = { persistCurrentConversation() }
                             )
                             AppScreen.FLOW -> WorkflowCanvasScreen(
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
