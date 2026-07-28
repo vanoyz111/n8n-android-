@@ -12,14 +12,14 @@ import java.net.URL
 
 object AiClient {
 
-    suspend fun sendMessage(context: Context, userMessage: String): String {
+    suspend fun sendMessage(context: Context, history: List<ChatMessage>): String {
         val settings = SettingsStore(context)
         return withContext(Dispatchers.IO) {
             try {
                 if (settings.aiProvider == "openai_compatible") {
-                    callOpenAiCompatible(settings, userMessage)
+                    callOpenAiCompatible(settings, history)
                 } else {
-                    callGemini(settings, userMessage)
+                    callGemini(settings, history)
                 }
             } catch (e: Exception) {
                 AppLog.add("AI_ERROR", e.message ?: "Unknown error")
@@ -28,7 +28,7 @@ object AiClient {
         }
     }
 
-    private fun callGemini(settings: SettingsStore, message: String): String {
+    private fun callGemini(settings: SettingsStore, history: List<ChatMessage>): String {
         val apiKey = settings.geminiApiKey
         if (apiKey.isBlank()) return "API key Gemini belum diisi. Buka Settings buat masukin API key."
         val model = settings.geminiModel.ifBlank { "gemini-flash-latest" }
@@ -40,15 +40,27 @@ object AiClient {
         connection.connectTimeout = 20000
         connection.readTimeout = 30000
 
+        val contents = JSONArray()
+        history.forEach { msg ->
+            val role = if (msg.role == "user") "user" else "model"
+            contents.put(
+                JSONObject().apply {
+                    put("role", role)
+                    put("parts", JSONArray().put(JSONObject().apply { put("text", msg.text) }))
+                }
+            )
+        }
+
         val bodyJson = JSONObject().apply {
-            put(
-                "contents",
-                JSONArray().put(
+            put("contents", contents)
+            if (settings.systemPrompt.isNotBlank()) {
+                put(
+                    "systemInstruction",
                     JSONObject().apply {
-                        put("parts", JSONArray().put(JSONObject().apply { put("text", message) }))
+                        put("parts", JSONArray().put(JSONObject().apply { put("text", settings.systemPrompt) }))
                     }
                 )
-            )
+            }
         }
         connection.outputStream.use { it.write(bodyJson.toString().toByteArray()) }
 
@@ -74,7 +86,7 @@ object AiClient {
         return text ?: "Gemini gak ngasih jawaban (response kosong)."
     }
 
-    private fun callOpenAiCompatible(settings: SettingsStore, message: String): String {
+    private fun callOpenAiCompatible(settings: SettingsStore, history: List<ChatMessage>): String {
         val baseUrl = settings.customBaseUrl.trimEnd('/')
         if (baseUrl.isBlank()) return "Base URL AI belum diisi. Buka Settings buat masukin URL-nya."
         val url = URL("$baseUrl/v1/chat/completions")
@@ -88,17 +100,24 @@ object AiClient {
         connection.connectTimeout = 20000
         connection.readTimeout = 60000
 
+        val messages = JSONArray()
+        if (settings.systemPrompt.isNotBlank()) {
+            messages.put(JSONObject().apply {
+                put("role", "system")
+                put("content", settings.systemPrompt)
+            })
+        }
+        history.forEach { msg ->
+            val role = if (msg.role == "user") "user" else "assistant"
+            messages.put(JSONObject().apply {
+                put("role", role)
+                put("content", msg.text)
+            })
+        }
+
         val bodyJson = JSONObject().apply {
             put("model", settings.customModel.ifBlank { "default" })
-            put(
-                "messages",
-                JSONArray().put(
-                    JSONObject().apply {
-                        put("role", "user")
-                        put("content", message)
-                    }
-                )
-            )
+            put("messages", messages)
         }
         connection.outputStream.use { it.write(bodyJson.toString().toByteArray()) }
 
