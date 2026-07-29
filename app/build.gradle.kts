@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.vano.n8nmobile"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.vano.n8nmobile"
