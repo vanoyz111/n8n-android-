@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -18,12 +19,14 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +40,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
+private data class FilterModeOption(val value: String, val label: String)
+
+private val filterModeOptions = listOf(
+    FilterModeOption("EVERYONE", "Semua orang"),
+    FilterModeOption("WHITELIST", "Daftar kontak saya..."),
+    FilterModeOption("BLACKLIST", "Kecuali daftar kontak saya..."),
+    FilterModeOption("EXCEPT_PHONE_CONTACTS", "Kecuali kontak telepon saya")
+)
+
 @Composable
 fun AutoReplyScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -45,8 +57,13 @@ fun AutoReplyScreen(onBack: () -> Unit) {
     var aiFallback by remember { mutableStateOf(AutoReplyStore.isAiFallbackEnabled(context)) }
     var personaPrompt by remember { mutableStateOf(AutoReplyStore.getPersonaPrompt(context)) }
     var rules by remember { mutableStateOf(AutoReplyStore.getRules(context)) }
-    var showAddDialog by remember { mutableStateOf(false) }
+    var showAddRuleDialog by remember { mutableStateOf(false) }
     var savedMessage by remember { mutableStateOf<String?>(null) }
+
+    var filterMode by remember { mutableStateOf(AutoReplyStore.getContactFilterMode(context)) }
+    var groupEnabled by remember { mutableStateOf(AutoReplyStore.isGroupEnabled(context)) }
+    var contactList by remember { mutableStateOf(AutoReplyStore.getContactList(context)) }
+    var showAddContactDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -77,6 +94,90 @@ fun AutoReplyScreen(onBack: () -> Unit) {
         }
         Spacer(modifier = Modifier.height(4.dp))
         Text("Cari \"Aiwa\" di daftar itu, lalu aktifkan.", style = MaterialTheme.typography.bodySmall)
+
+        Spacer(modifier = Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text("Balas Otomatis Ke", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        filterModeOptions.forEach { option ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = filterMode == option.value,
+                        onClick = {
+                            filterMode = option.value
+                            AutoReplyStore.setContactFilterMode(context, option.value)
+                        }
+                    )
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = filterMode == option.value,
+                    onClick = {
+                        filterMode = option.value
+                        AutoReplyStore.setContactFilterMode(context, option.value)
+                    }
+                )
+                Text(option.label)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .selectable(
+                    selected = groupEnabled,
+                    onClick = {
+                        groupEnabled = !groupEnabled
+                        AutoReplyStore.setGroupEnabled(context, groupEnabled)
+                    }
+                ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(checked = groupEnabled, onCheckedChange = {
+                groupEnabled = it
+                AutoReplyStore.setGroupEnabled(context, it)
+            })
+            Text("Aktifkan Grup")
+        }
+
+        if (filterMode == "WHITELIST" || filterMode == "BLACKLIST") {
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Daftar Kontak", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Button(onClick = { showAddContactDialog = true }) {
+                    Text("+ Kontak")
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (contactList.isEmpty()) {
+                Text("Belum ada kontak. Nama harus sama persis kayak nama pengirim di notifikasi WhatsApp.", style = MaterialTheme.typography.bodySmall)
+            } else {
+                contactList.forEach { contact ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(contact, modifier = Modifier.weight(1f))
+                        IconButton(onClick = {
+                            val updated = contactList.filterNot { it == contact }
+                            contactList = updated
+                            AutoReplyStore.setContactList(context, updated)
+                        }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Hapus kontak")
+                        }
+                    }
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
         HorizontalDivider()
@@ -124,7 +225,7 @@ fun AutoReplyScreen(onBack: () -> Unit) {
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Aturan Keyword", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            Button(onClick = { showAddDialog = true }) {
+            Button(onClick = { showAddRuleDialog = true }) {
                 Text("+ Aturan")
             }
         }
@@ -159,11 +260,11 @@ fun AutoReplyScreen(onBack: () -> Unit) {
         Spacer(modifier = Modifier.height(32.dp))
     }
 
-    if (showAddDialog) {
+    if (showAddRuleDialog) {
         var keyword by remember { mutableStateOf("") }
         var reply by remember { mutableStateOf("") }
         AlertDialog(
-            onDismissRequest = { showAddDialog = false },
+            onDismissRequest = { showAddRuleDialog = false },
             title = { Text("Aturan Baru") },
             text = {
                 Column {
@@ -191,11 +292,40 @@ fun AutoReplyScreen(onBack: () -> Unit) {
                         rules = updated
                         AutoReplyStore.setRules(context, updated)
                     }
-                    showAddDialog = false
+                    showAddRuleDialog = false
                 }) { Text("Tambah") }
             },
             dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) { Text("Batal") }
+                TextButton(onClick = { showAddRuleDialog = false }) { Text("Batal") }
+            }
+        )
+    }
+
+    if (showAddContactDialog) {
+        var contactName by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showAddContactDialog = false },
+            title = { Text("Tambah Kontak") },
+            text = {
+                OutlinedTextField(
+                    value = contactName,
+                    onValueChange = { contactName = it },
+                    label = { Text("Nama persis seperti di WhatsApp") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (contactName.isNotBlank()) {
+                        val updated = contactList + contactName.trim()
+                        contactList = updated
+                        AutoReplyStore.setContactList(context, updated)
+                    }
+                    showAddContactDialog = false
+                }) { Text("Tambah") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddContactDialog = false }) { Text("Batal") }
             }
         )
     }

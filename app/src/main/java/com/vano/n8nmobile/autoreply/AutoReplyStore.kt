@@ -11,6 +11,9 @@ object AutoReplyStore {
     private const val KEY_AI_FALLBACK = "ai_fallback"
     private const val KEY_PERSONA_PROMPT = "persona_prompt"
     private const val KEY_RULES = "rules"
+    private const val KEY_CONTACT_FILTER_MODE = "contact_filter_mode"
+    private const val KEY_GROUP_ENABLED = "group_enabled"
+    private const val KEY_CONTACT_LIST = "contact_list"
 
     fun newId(): String = UUID.randomUUID().toString()
 
@@ -57,5 +60,35 @@ object AutoReplyStore {
             })
         }
         prefs(context).edit().putString(KEY_RULES, array.toString()).apply()
+    }
+
+    // "EVERYONE", "WHITELIST", "BLACKLIST", "EXCEPT_PHONE_CONTACTS"
+    fun getContactFilterMode(context: Context): String =
+        prefs(context).getString(KEY_CONTACT_FILTER_MODE, "EVERYONE") ?: "EVERYONE"
+
+    fun setContactFilterMode(context: Context, mode: String) {
+        prefs(context).edit().putString(KEY_CONTACT_FILTER_MODE, mode).apply()
+    }
+
+    fun isGroupEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_GROUP_ENABLED, false)
+
+    fun setGroupEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_GROUP_ENABLED, enabled).apply()
+    }
+
+    fun getContactList(context: Context): List<String> {
+        val raw = prefs(context).getString(KEY_CONTACT_LIST, null) ?: return emptyList()
+        return try {
+            val array = JSONArray(raw)
+            (0 until array.length()).map { array.getString(it) }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    fun setContactList(context: Context, contacts: List<String>) {
+        val array = JSONArray()
+        contacts.forEach { array.put(it) }
+        prefs(context).edit().putString(KEY_CONTACT_LIST, array.toString()).apply()
     }
 }
