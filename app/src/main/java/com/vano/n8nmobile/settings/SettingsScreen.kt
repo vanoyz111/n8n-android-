@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.vano.n8nmobile.logging.AppLog
 
 @Composable
-fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit, onOpenAutoReply: () -> Unit) {
+fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit, onOpenAutoReply: () -> Unit, onOpenLocalAi: () -> Unit) {
     val context = LocalContext.current
     val store = remember { SettingsStore(context) }
 
@@ -189,6 +189,21 @@ fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit, 
                 store.darkTheme = it
                 onThemeChanged(it)
             })
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text("AI Lokal (Offline)", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "Download & jalanin model AI langsung di HP. Dipakai otomatis kalau AI online gagal.",
+            style = MaterialTheme.typography.bodySmall
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = onOpenLocalAi) {
+            Text("Buka Pengaturan AI Lokal")
         }
 
         Spacer(modifier = Modifier.height(24.dp))

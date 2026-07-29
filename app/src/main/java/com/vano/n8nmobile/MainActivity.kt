@@ -50,11 +50,12 @@ import com.vano.n8nmobile.chat.ChatMessage
 import com.vano.n8nmobile.chat.ChatScreen
 import com.vano.n8nmobile.chat.ChatStore
 import com.vano.n8nmobile.autoreply.AutoReplyScreen
+import com.vano.n8nmobile.localai.LocalModelScreen
 import com.vano.n8nmobile.settings.SettingsScreen
 import com.vano.n8nmobile.settings.SettingsStore
 import kotlinx.coroutines.launch
 
-private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY }
+private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI }
 
 class MainActivity : ComponentActivity() {
 
@@ -204,9 +205,13 @@ class MainActivity : ComponentActivity() {
                             AppScreen.SETTINGS -> SettingsScreen(
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
                                 onThemeChanged = { newDark -> isDark = newDark },
-                                onOpenAutoReply = { currentScreen = AppScreen.AUTOREPLY }
+                                onOpenAutoReply = { currentScreen = AppScreen.AUTOREPLY },
+                                onOpenLocalAi = { currentScreen = AppScreen.LOCAL_AI }
                             )
                             AppScreen.AUTOREPLY -> AutoReplyScreen(
+                                onBack = { currentScreen = AppScreen.SETTINGS }
+                            )
+                            AppScreen.LOCAL_AI -> LocalModelScreen(
                                 onBack = { currentScreen = AppScreen.SETTINGS }
                             )
                         }
