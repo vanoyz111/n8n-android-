@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.vano.n8nmobile.logging.AppLog
 
 @Composable
-fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit) {
+fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit, onOpenAutoReply: () -> Unit) {
     val context = LocalContext.current
     val store = remember { SettingsStore(context) }
 
@@ -195,6 +195,21 @@ fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit) 
         HorizontalDivider()
         Spacer(modifier = Modifier.height(16.dp))
 
+        Text("Chat Bot Otomatis (WhatsApp)", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "Balas pesan WhatsApp otomatis pakai keyword atau AI, mirip WhatAuto.",
+            style = MaterialTheme.typography.bodySmall
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = onOpenAutoReply) {
+            Text("Buka Pengaturan Auto-Reply")
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(16.dp))
+
         Text("Log & Bantuan", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = {
@@ -202,7 +217,7 @@ fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit) 
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_TEXT, logText.ifBlank { "Belum ada log." })
-                putExtra(Intent.EXTRA_SUBJECT, "n8n Mobile - Log")
+                putExtra(Intent.EXTRA_SUBJECT, "Aiwa - Log")
             }
             context.startActivity(Intent.createChooser(intent, "Kirim Log"))
         }) {
