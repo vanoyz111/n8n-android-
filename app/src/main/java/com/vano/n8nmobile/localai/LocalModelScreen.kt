@@ -1,5 +1,11 @@
 package com.vano.n8nmobile.localai
 
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,11 +15,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,9 +38,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 
 private const val CURATED_NAME = "Qwen2.5 1.5B Instruct (± 1 GB)"
 private const val CURATED_URL = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"
@@ -47,12 +61,34 @@ fun LocalModelScreen(onBack: () -> Unit) {
     var progress by remember { mutableStateOf(0f) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
 
+    var isImporting by remember { mutableStateOf(false) }
+
     var customUrl by remember { mutableStateOf("") }
     var customFileName by remember { mutableStateOf("") }
 
     var testPrompt by remember { mutableStateOf("") }
     var testResult by remember { mutableStateOf<String?>(null) }
     var isTesting by remember { mutableStateOf(false) }
+
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            isImporting = true
+            statusMessage = null
+            scope.launch {
+                try {
+                    val name = queryFileName(context, uri) ?: "model_lokal.gguf"
+                    val destFile = copyUriToAppStorage(context, uri, name)
+                    LocalModelStore.setDownloadedModel(context, destFile.absolutePath, name)
+                    downloadedName = name
+                    statusMessage = "Model \"$name\" berhasil diimport"
+                } catch (e: Exception) {
+                    statusMessage = "Gagal import: ${e.message}"
+                } finally {
+                    isImporting = false
+                }
+            }
+        }
+    }
 
     fun startDownload(url: String, name: String, fileName: String) {
         if (url.isBlank() || fileName.isBlank()) {
@@ -93,12 +129,53 @@ fun LocalModelScreen(onBack: () -> Unit) {
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             "Jalanin model AI langsung di HP, gak butuh internet, gak ada limit API. " +
-                "Sekali didownload, dipakai otomatis kalau AI online gagal/limit.",
+                "Sekali didownload/diimport, dipakai otomatis kalau AI online gagal/limit.",
             style = MaterialTheme.typography.bodySmall
         )
 
         Spacer(modifier = Modifier.height(16.dp))
         Text("Status: ${downloadedName ?: "Belum ada model"}", style = MaterialTheme.typography.bodyMedium)
+
+        Spacer(modifier = Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text("Import File Lokal", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "Punya file .gguf yang udah didownload manual (browser, file manager)? Pilih langsung di sini.",
+            style = MaterialTheme.typography.bodySmall
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.FolderOpen, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.padding(4.dp))
+                Text(
+                    if (isImporting) "Menyalin file..." else "Import File Lokal",
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Button(
+            onClick = { importLauncher.launch(arrayOf("*/*")) },
+            enabled = !isImporting && !isDownloading,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (isImporting) "Menyalin..." else "Pilih File .gguf dari HP")
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
         HorizontalDivider()
@@ -113,7 +190,7 @@ fun LocalModelScreen(onBack: () -> Unit) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Button(
                     onClick = { startDownload(CURATED_URL, CURATED_NAME, CURATED_FILENAME) },
-                    enabled = !isDownloading
+                    enabled = !isDownloading && !isImporting
                 ) {
                     Text("Download")
                 }
@@ -142,7 +219,7 @@ fun LocalModelScreen(onBack: () -> Unit) {
         Spacer(modifier = Modifier.height(8.dp))
         Button(
             onClick = { startDownload(customUrl.trim(), customFileName.trim(), customFileName.trim()) },
-            enabled = !isDownloading
+            enabled = !isDownloading && !isImporting
         ) {
             Text("Download Model Kustom")
         }
@@ -174,7 +251,7 @@ fun LocalModelScreen(onBack: () -> Unit) {
             onClick = {
                 val path = LocalModelStore.getDownloadedModelPath(context)
                 if (path == null) {
-                    testResult = "Download model dulu di atas."
+                    testResult = "Download atau import model dulu di atas."
                     return@Button
                 }
                 isTesting = true
@@ -209,3 +286,26 @@ fun LocalModelScreen(onBack: () -> Unit) {
         Spacer(modifier = Modifier.height(32.dp))
     }
 }
+
+private fun queryFileName(context: Context, uri: Uri): String? {
+    var name: String? = null
+    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (idx >= 0) name = cursor.getString(idx)
+        }
+    }
+    return name
+}
+
+private suspend fun copyUriToAppStorage(context: Context, uri: Uri, fileName: String): File =
+    withContext(Dispatchers.IO) {
+        val destDir = context.getExternalFilesDir(null) ?: context.filesDir
+        val destFile = File(destDir, fileName)
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            FileOutputStream(destFile).use { output ->
+                input.copyTo(output, bufferSize = 65536)
+            }
+        } ?: throw IllegalStateException("Gak bisa buka file yang dipilih")
+        destFile
+    }
