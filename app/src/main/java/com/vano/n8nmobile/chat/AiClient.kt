@@ -1,6 +1,8 @@
 package com.vano.n8nmobile.chat
 
 import android.content.Context
+import com.vano.n8nmobile.localai.LocalModelRuntime
+import com.vano.n8nmobile.localai.LocalModelStore
 import com.vano.n8nmobile.logging.AppLog
 import com.vano.n8nmobile.settings.SettingsStore
 import kotlinx.coroutines.Dispatchers
@@ -12,8 +14,34 @@ import java.net.URL
 
 object AiClient {
 
+    private val errorPrefixes = listOf(
+        "Terjadi error", "Gagal manggil Gemini", "API key Gemini belum diisi",
+        "Gemini gak ngasih jawaban", "Base URL AI belum diisi", "Gagal manggil AI",
+        "AI gak ngasih jawaban", "Model lokal belum didownload", "Gagal memuat model lokal",
+        "Gagal menjalankan AI lokal"
+    )
+
+    fun isFailureMessage(text: String): Boolean = errorPrefixes.any { text.startsWith(it) }
+
     suspend fun sendMessage(context: Context, history: List<ChatMessage>): String {
         val settings = SettingsStore(context)
+        val primaryResult = callPrimaryProvider(context, history, settings)
+
+        if (isFailureMessage(primaryResult)) {
+            val hasLocalModel = LocalModelStore.getDownloadedModelPath(context) != null
+            if (hasLocalModel) {
+                AppLog.add("AI_FALLBACK", "Provider utama gagal, coba AI Lokal...")
+                return callLocalLlamatik(context, history, settings)
+            }
+        }
+        return primaryResult
+    }
+
+    private suspend fun callPrimaryProvider(
+        context: Context,
+        history: List<ChatMessage>,
+        settings: SettingsStore
+    ): String {
         return withContext(Dispatchers.IO) {
             try {
                 if (settings.aiProvider == "openai_compatible") {
@@ -24,6 +52,41 @@ object AiClient {
             } catch (e: Exception) {
                 AppLog.add("AI_ERROR", e.message ?: "Unknown error")
                 "Terjadi error: ${e.message}"
+            }
+        }
+    }
+
+    private suspend fun callLocalLlamatik(
+        context: Context,
+        history: List<ChatMessage>,
+        settings: SettingsStore
+    ): String {
+        return withContext(Dispatchers.IO) {
+            try {
+                val modelPath = LocalModelStore.getDownloadedModelPath(context)
+                    ?: return@withContext "Model lokal belum didownload. Buka Settings > AI Lokal."
+
+                val loaded = LocalModelRuntime.ensureLoaded(modelPath)
+                if (!loaded) return@withContext "Gagal memuat model lokal."
+
+                val messages = mutableListOf<Pair<String, String>>()
+                if (settings.systemPrompt.isNotBlank()) {
+                    messages.add("system" to settings.systemPrompt)
+                }
+                history.forEach { msg ->
+                    messages.add((if (msg.role == "user") "user" else "assistant") to msg.text)
+                }
+
+                val prompt = LocalModelRuntime.applyChatTemplate(messages)
+                    ?: history.lastOrNull { it.role == "user" }?.text
+                    ?: ""
+
+                val result = LocalModelRuntime.generate(prompt)
+                AppLog.add("CHAT", "AI Lokal merespons (${result.length} karakter)")
+                result
+            } catch (e: Exception) {
+                AppLog.add("LOCAL_AI_ERROR", e.message ?: "unknown")
+                "Gagal menjalankan AI lokal: ${e.message}"
             }
         }
     }

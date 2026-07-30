@@ -29,11 +29,6 @@ class WhatsAppNotificationListener : NotificationListenerService() {
     private val processedKeys = ArrayDeque<String>()
     private val recentReplyTimestamps = mutableListOf<Long>()
 
-    private val errorPrefixes = listOf(
-        "Terjadi error", "Gagal manggil Gemini", "API key Gemini belum diisi",
-        "Gemini gak ngasih jawaban", "Base URL AI belum diisi", "Gagal manggil AI",
-        "AI gak ngasih jawaban"
-    )
 
     companion object {
         private const val SENDER_COOLDOWN_MS = 15_000L
@@ -131,7 +126,7 @@ class WhatsAppNotificationListener : NotificationListenerService() {
                         "Balas pesan WhatsApp berikut secara singkat dan ramah atas nama saya: $messageText"
                     }
                     val reply = AiClient.sendMessage(applicationContext, listOf(ChatMessage("user", prompt)))
-                    if (errorPrefixes.any { reply.startsWith(it) }) {
+                    if (com.vano.n8nmobile.chat.AiClient.isFailureMessage(reply)) {
                         AppLog.add("AUTOREPLY_ERROR", "AI gagal, TIDAK dikirim ke WhatsApp: ${reply.take(100)}")
                         releaseSender(sender, applyCooldown = false)
                     } else {
