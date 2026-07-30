@@ -1,6 +1,6 @@
 package com.vano.n8nmobile.localai
 
-import com.llamatik.library.LlamaBridge
+import com.llamatik.library.platform.LlamaBridge
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
