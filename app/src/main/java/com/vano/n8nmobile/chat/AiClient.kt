@@ -2,6 +2,8 @@ package com.vano.n8nmobile.chat
 
 import android.content.Context
 import com.vano.n8nmobile.localai.LocalModelRuntime
+import com.vano.n8nmobile.localai.LiteRtModelStore
+import com.vano.n8nmobile.localai.LiteRtRuntime
 import com.vano.n8nmobile.localai.LocalModelStore
 import com.vano.n8nmobile.logging.AppLog
 import com.vano.n8nmobile.settings.SettingsStore
@@ -28,10 +30,17 @@ object AiClient {
         val primaryResult = callPrimaryProvider(context, history, settings)
 
         if (isFailureMessage(primaryResult)) {
-            val hasLocalModel = LocalModelStore.getDownloadedModelPath(context) != null
-            if (hasLocalModel) {
-                AppLog.add("AI_FALLBACK", "Provider utama gagal, coba AI Lokal...")
-                return callLocalLlamatik(context, history, settings)
+            val ggufPath = LocalModelStore.getDownloadedModelPath(context)
+            val litertPath = LiteRtModelStore.getDownloadedModelPath(context)
+            when {
+                ggufPath != null -> {
+                    AppLog.add("AI_FALLBACK", "Provider utama gagal, coba AI Lokal (GGUF)...")
+                    return callLocalLlamatik(context, history, settings)
+                }
+                litertPath != null -> {
+                    AppLog.add("AI_FALLBACK", "Provider utama gagal, coba AI Lokal (LiteRT-LM)...")
+                    return callLocalLiteRt(context, history, settings, litertPath)
+                }
             }
         }
         return primaryResult
