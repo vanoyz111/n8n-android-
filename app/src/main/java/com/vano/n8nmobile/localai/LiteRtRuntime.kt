@@ -48,6 +48,6 @@ object LiteRtRuntime {
 
     suspend fun generate(prompt: String): String = withContext(Dispatchers.IO) {
         val conv = conversation ?: throw IllegalStateException("Model LiteRT belum dimuat")
-        conv.sendMessage(prompt).text
+        conv.sendMessage(prompt).toString()
     }
 }

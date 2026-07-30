@@ -1,9 +1,9 @@
 package com.vano.n8nmobile.chat
 
 import android.content.Context
-import com.vano.n8nmobile.localai.LocalModelRuntime
 import com.vano.n8nmobile.localai.LiteRtModelStore
 import com.vano.n8nmobile.localai.LiteRtRuntime
+import com.vano.n8nmobile.localai.LocalModelRuntime
 import com.vano.n8nmobile.localai.LocalModelStore
 import com.vano.n8nmobile.logging.AppLog
 import com.vano.n8nmobile.settings.SettingsStore
@@ -91,7 +91,28 @@ object AiClient {
                     ?: ""
 
                 val result = LocalModelRuntime.generate(prompt)
-                AppLog.add("CHAT", "AI Lokal merespons (${result.length} karakter)")
+                AppLog.add("CHAT", "AI Lokal (GGUF) merespons (${result.length} karakter)")
+                result
+            } catch (e: Exception) {
+                AppLog.add("LOCAL_AI_ERROR", e.message ?: "unknown")
+                "Gagal menjalankan AI lokal: ${e.message}"
+            }
+        }
+    }
+
+    private suspend fun callLocalLiteRt(
+        context: Context,
+        history: List<ChatMessage>,
+        settings: SettingsStore,
+        modelPath: String
+    ): String {
+        return withContext(Dispatchers.IO) {
+            try {
+                val loaded = LiteRtRuntime.ensureLoaded(context, modelPath, settings.systemPrompt)
+                if (!loaded) return@withContext "Gagal memuat model lokal."
+                val lastUserMessage = history.lastOrNull { it.role == "user" }?.text ?: ""
+                val result = LiteRtRuntime.generate(lastUserMessage)
+                AppLog.add("CHAT", "AI Lokal (LiteRT) merespons (${result.length} karakter)")
                 result
             } catch (e: Exception) {
                 AppLog.add("LOCAL_AI_ERROR", e.message ?: "unknown")
