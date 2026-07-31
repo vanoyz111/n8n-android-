@@ -94,7 +94,7 @@ class MainActivity : ComponentActivity() {
             var isDark by remember { mutableStateOf(settingsStore.darkTheme) }
             val colors = if (isDark) AiwaColorScheme else lightColorScheme()
 
-            val chatMessages = remember { mutableStateListOf<ChatMessage>().apply { addAll(ChatStore.load(context)) } }
+            val chatMessages = remember { mutableStateListOf<ChatMessage>().apply { ChatStore.loadAll(context).firstOrNull()?.let { addAll(it.messages) } } }
 
             val savedFlow = remember { FlowStore.load(context) }
             val flowNodes = remember { mutableStateListOf<CanvasNode>().apply { addAll(savedFlow.nodes) } }
