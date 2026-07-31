@@ -54,6 +54,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.vano.n8nmobile.logging.AppLog
+import com.vano.n8nmobile.ui.AiwaBubbleGradient
+import com.vano.n8nmobile.ui.AiwaColors
+import com.vano.n8nmobile.ui.AiwaDecorativeFont
+import com.vano.n8nmobile.ui.AiwaPillGradient
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -165,11 +174,13 @@ fun ChatScreen(
                         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
                     ) {
                         Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isUser) MaterialTheme.colorScheme.primaryContainer
-                                else MaterialTheme.colorScheme.surfaceVariant
-                            ),
-                            shape = RoundedCornerShape(14.dp)
+                            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                            border = BorderStroke(1.5.dp, AiwaColors.Pink),
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier.background(
+                                if (isUser) AiwaColors.Pink else AiwaBubbleGradient,
+                                RoundedCornerShape(20.dp)
+                            )
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 msg.imageBase64?.let { b64 ->
@@ -216,8 +227,11 @@ fun ChatScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box {
-                IconButton(onClick = { attachMenuExpanded = true }) {
-                    Icon(Icons.Default.AttachFile, contentDescription = "Lampirkan")
+                IconButton(
+                    onClick = { attachMenuExpanded = true },
+                    modifier = Modifier.size(40.dp).clip(CircleShape).background(AiwaColors.Pink)
+                ) {
+                    Icon(Icons.Default.AttachFile, contentDescription = "Lampirkan", tint = Color.White)
                 }
                 DropdownMenu(expanded = attachMenuExpanded, onDismissRequest = { attachMenuExpanded = false }) {
                     DropdownMenuItem(text = { Text("Kamera") }, onClick = {
@@ -239,10 +253,11 @@ fun ChatScreen(
                 onValueChange = { input = it },
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("Tanya AI...") },
-                shape = RoundedCornerShape(24.dp)
+                shape = RoundedCornerShape(50)
             )
             Spacer(modifier = Modifier.padding(4.dp))
             IconButton(
+                modifier = Modifier.size(44.dp).clip(CircleShape).background(AiwaColors.Pink),
                 onClick = {
                     val text = input.trim()
                     if ((text.isEmpty() && pendingImageBase64 == null && pendingAttachmentName == null) || isLoading) return@IconButton
@@ -269,7 +284,7 @@ fun ChatScreen(
                     }
                 }
             ) {
-                Icon(Icons.Default.Send, contentDescription = "Kirim")
+                Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Color.White)
             }
         }
     }

@@ -6,12 +6,21 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Chat
@@ -24,7 +33,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -39,9 +47,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.vano.n8nmobile.canvas.CanvasEdge
 import com.vano.n8nmobile.canvas.CanvasNode
 import com.vano.n8nmobile.canvas.FlowStore
@@ -53,6 +67,11 @@ import com.vano.n8nmobile.autoreply.AutoReplyScreen
 import com.vano.n8nmobile.localai.LocalModelScreen
 import com.vano.n8nmobile.settings.SettingsScreen
 import com.vano.n8nmobile.settings.SettingsStore
+import com.vano.n8nmobile.ui.AiwaColorScheme
+import com.vano.n8nmobile.ui.AiwaColors
+import com.vano.n8nmobile.ui.AiwaDecorativeFont
+import com.vano.n8nmobile.ui.AiwaHeaderGradient
+import com.vano.n8nmobile.ui.AiwaPillGradient
 import kotlinx.coroutines.launch
 
 private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI }
@@ -73,20 +92,9 @@ class MainActivity : ComponentActivity() {
             val context = LocalContext.current
             val settingsStore = remember { SettingsStore(context) }
             var isDark by remember { mutableStateOf(settingsStore.darkTheme) }
-            val colors = if (isDark) darkColorScheme() else lightColorScheme()
+            val colors = if (isDark) AiwaColorScheme else lightColorScheme()
 
-            var currentConversationId by remember { mutableStateOf(ChatStore.newId()) }
-            val chatMessages = remember { mutableStateListOf<ChatMessage>() }
-            var conversationsList by remember { mutableStateOf(ChatStore.loadAll(context)) }
-
-            fun persistCurrentConversation() {
-                if (chatMessages.isNotEmpty()) {
-                    val title = chatMessages.firstOrNull { it.role == "user" && it.text.isNotBlank() }
-                        ?.text?.take(40) ?: "Percakapan baru"
-                    ChatStore.save(context, currentConversationId, title, chatMessages.toList())
-                    conversationsList = ChatStore.loadAll(context)
-                }
-            }
+            val chatMessages = remember { mutableStateListOf<ChatMessage>().apply { addAll(ChatStore.load(context)) } }
 
             val savedFlow = remember { FlowStore.load(context) }
             val flowNodes = remember { mutableStateListOf<CanvasNode>().apply { addAll(savedFlow.nodes) } }
@@ -99,85 +107,110 @@ class MainActivity : ComponentActivity() {
                     var currentScreen by remember { mutableStateOf(AppScreen.CHAT) }
                     val drawerState = rememberDrawerState(DrawerValue.Closed)
                     val scope = rememberCoroutineScope()
+                    var conversationsList by remember { mutableStateOf(ChatStore.loadAll(context)) }
 
                     ModalNavigationDrawer(
                         drawerState = drawerState,
                         drawerContent = {
-                            ModalDrawerSheet {
-                                Text(
-                                    "Aiwa",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    modifier = Modifier.padding(16.dp)
-                                )
-                                NavigationDrawerItem(
-                                    label = { Text("Chat") },
-                                    icon = { Icon(Icons.Default.Chat, contentDescription = null) },
-                                    selected = currentScreen == AppScreen.CHAT,
-                                    onClick = {
+                            ModalDrawerSheet(
+                                drawerContainerColor = Color.Transparent
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(AiwaHeaderGradient)
+                                        .padding(16.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Image(
+                                            painter = painterResource(id = R.mipmap.ic_launcher),
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .size(48.dp)
+                                                .clip(CircleShape)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text(
+                                            "AIWA",
+                                            color = Color.White,
+                                            fontFamily = AiwaDecorativeFont,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 26.sp
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(20.dp))
+
+                                    AiwaDrawerButton(Icons.Default.Chat, "Chat") {
                                         currentScreen = AppScreen.CHAT
                                         scope.launch { drawerState.close() }
-                                    },
-                                    modifier = Modifier.padding(horizontal = 12.dp)
-                                )
-                                NavigationDrawerItem(
-                                    label = { Text("Flow") },
-                                    icon = { Icon(Icons.Default.AccountTree, contentDescription = null) },
-                                    selected = currentScreen == AppScreen.FLOW,
-                                    onClick = {
+                                    }
+                                    AiwaDrawerButton(Icons.Default.AccountTree, "Flow") {
                                         currentScreen = AppScreen.FLOW
                                         scope.launch { drawerState.close() }
-                                    },
-                                    modifier = Modifier.padding(horizontal = 12.dp)
-                                )
-                                NavigationDrawerItem(
-                                    label = { Text("Settings") },
-                                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                                    selected = currentScreen == AppScreen.SETTINGS,
-                                    onClick = {
+                                    }
+                                    AiwaDrawerButton(Icons.Default.Settings, "Setting") {
                                         currentScreen = AppScreen.SETTINGS
                                         scope.launch { drawerState.close() }
-                                    },
-                                    modifier = Modifier.padding(horizontal = 12.dp)
-                                )
+                                    }
 
-                                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                                Text(
-                                    "Riwayat Chat",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    modifier = Modifier.padding(horizontal = 16.dp)
-                                )
-                                if (conversationsList.isEmpty()) {
+                                    Spacer(modifier = Modifier.height(16.dp))
                                     Text(
-                                        "Belum ada riwayat",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                        "Riwayat chat",
+                                        color = Color.White,
+                                        fontFamily = AiwaDecorativeFont,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 20.sp,
+                                        modifier = Modifier.padding(start = 4.dp)
                                     )
-                                } else {
-                                    conversationsList.forEach { conv ->
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable {
-                                                    chatMessages.clear()
-                                                    chatMessages.addAll(conv.messages)
-                                                    currentConversationId = conv.id
-                                                    currentScreen = AppScreen.CHAT
-                                                    scope.launch { drawerState.close() }
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(20.dp))
+                                            .background(AiwaColors.PanelBlack)
+                                            .padding(12.dp)
+                                    ) {
+                                        Column {
+                                            if (conversationsList.isEmpty()) {
+                                                Text("Belum ada riwayat", color = Color.White.copy(alpha = 0.6f))
+                                            } else {
+                                                conversationsList.forEach { conv ->
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clickable {
+                                                                chatMessages.clear()
+                                                                chatMessages.addAll(conv.messages)
+                                                                currentScreen = AppScreen.CHAT
+                                                                scope.launch { drawerState.close() }
+                                                            }
+                                                            .padding(vertical = 8.dp),
+                                                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            conv.title,
+                                                            color = Color.White,
+                                                            maxLines = 1,
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                        IconButton(
+                                                            onClick = {
+                                                                ChatStore.delete(context, conv.id)
+                                                                conversationsList = ChatStore.loadAll(context)
+                                                            },
+                                                            modifier = Modifier
+                                                                .size(32.dp)
+                                                                .clip(CircleShape)
+                                                                .background(AiwaColors.Pink)
+                                                        ) {
+                                                            Icon(Icons.Default.Delete, contentDescription = "Hapus", tint = Color.White, modifier = Modifier.size(16.dp))
+                                                        }
+                                                    }
                                                 }
-                                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(conv.title, maxLines = 1, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                                            IconButton(onClick = {
-                                                ChatStore.delete(context, conv.id)
-                                                conversationsList = ChatStore.loadAll(context)
-                                                if (conv.id == currentConversationId) {
-                                                    chatMessages.clear()
-                                                    currentConversationId = ChatStore.newId()
-                                                }
-                                            }) {
-                                                Icon(Icons.Default.Delete, contentDescription = "Hapus percakapan")
                                             }
                                         }
                                     }
@@ -189,11 +222,15 @@ class MainActivity : ComponentActivity() {
                             AppScreen.CHAT -> ChatScreen(
                                 messages = chatMessages,
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
-                                onNewChat = {
-                                    chatMessages.clear()
-                                    currentConversationId = ChatStore.newId()
-                                },
-                                onMessagesChanged = { persistCurrentConversation() }
+                                onNewChat = { chatMessages.clear() },
+                                onMessagesChanged = {
+                                    if (chatMessages.isNotEmpty()) {
+                                        val title = chatMessages.firstOrNull { it.role == "user" && it.text.isNotBlank() }
+                                            ?.text?.take(40) ?: "Percakapan baru"
+                                        ChatStore.save(context, ChatStore.newId(), title, chatMessages.toList())
+                                        conversationsList = ChatStore.loadAll(context)
+                                    }
+                                }
                             )
                             AppScreen.FLOW -> WorkflowCanvasScreen(
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
@@ -219,5 +256,37 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun AiwaDrawerButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .clip(RoundedCornerShape(50))
+            .background(AiwaPillGradient)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.18f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = Color.White)
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            label,
+            color = Color.White,
+            fontFamily = AiwaDecorativeFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 20.sp
+        )
     }
 }
