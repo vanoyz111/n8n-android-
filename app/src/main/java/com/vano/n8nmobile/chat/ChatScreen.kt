@@ -10,6 +10,7 @@ import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -67,6 +68,11 @@ import com.vano.n8nmobile.ui.AiwaBubbleGradient
 import com.vano.n8nmobile.ui.AiwaColors
 import com.vano.n8nmobile.ui.AiwaDecorativeFont
 import com.vano.n8nmobile.ui.AiwaPillGradient
+import com.vano.n8nmobile.ui.AiBubbleShape
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.offset
+import com.vano.n8nmobile.R
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -202,35 +208,44 @@ fun ChatScreen(
                 }
                 items(messages.reversed()) { msg ->
                     val isUser = msg.role == "user"
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
-                    ) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                            border = BorderStroke(1.5.dp, AiwaColors.Pink),
-                            shape = RoundedCornerShape(20.dp),
-                            modifier = Modifier.background(
-                                if (isUser) SolidColor(AiwaColors.Pink) else AiwaBubbleGradient,
-                                RoundedCornerShape(20.dp)
-                            )
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                msg.imageBase64?.let { b64 ->
-                                    val bitmap = remember(b64) { decodeBase64ToBitmap(b64) }
-                                    bitmap?.let {
-                                        Image(bitmap = it.asImageBitmap(), contentDescription = null, modifier = Modifier.size(180.dp))
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                    }
-                                }
-                                msg.attachmentName?.let { name ->
-                                    Text("📎 $name", color = Color.White, style = MaterialTheme.typography.bodySmall)
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                }
-                                if (msg.text.isNotBlank()) {
-                                    Text(msg.text, color = Color.White)
+                    if (isUser) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                                border = BorderStroke(1.5.dp, AiwaColors.Pink),
+                                shape = RoundedCornerShape(50),
+                                modifier = Modifier.background(SolidColor(AiwaColors.Pink), RoundedCornerShape(50))
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                                    MessageContent(msg)
                                 }
                             }
+                        }
+                    } else {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(AiBubbleShape(cornerRadius = 20.dp, tailWidth = 16.dp, tailHeight = 14.dp))
+                                        .background(AiwaBubbleGradient, AiBubbleShape(cornerRadius = 20.dp, tailWidth = 16.dp, tailHeight = 14.dp))
+                                        .border(1.5.dp, AiwaColors.Pink, AiBubbleShape(cornerRadius = 20.dp, tailWidth = 16.dp, tailHeight = 14.dp))
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(start = 14.dp, top = 12.dp, end = 14.dp, bottom = 12.dp + 14.dp)
+                                    ) {
+                                        MessageContent(msg)
+                                    }
+                                }
+                            }
+                            Image(
+                                painter = painterResource(id = R.mipmap.ic_launcher),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .padding(start = 6.dp)
+                                    .offset(y = (-12).dp)
+                                    .size(30.dp)
+                                    .clip(CircleShape)
+                            )
                         }
                     }
                 }
@@ -340,6 +355,24 @@ fun ChatScreen(
                 Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Color.White)
             }
         }
+    }
+}
+
+@Composable
+private fun MessageContent(msg: ChatMessage) {
+    msg.imageBase64?.let { b64 ->
+        val bitmap = remember(b64) { decodeBase64ToBitmap(b64) }
+        bitmap?.let {
+            Image(bitmap = it.asImageBitmap(), contentDescription = null, modifier = Modifier.size(180.dp))
+            Spacer(modifier = Modifier.height(4.dp))
+        }
+    }
+    msg.attachmentName?.let { name ->
+        Text("\ud83d\udcce $name", color = Color.White, style = MaterialTheme.typography.bodySmall)
+        Spacer(modifier = Modifier.height(4.dp))
+    }
+    if (msg.text.isNotBlank()) {
+        Text(msg.text, color = Color.White)
     }
 }
 
