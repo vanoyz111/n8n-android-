@@ -58,6 +58,8 @@ import com.vano.n8nmobile.ui.AiwaBubbleGradient
 import com.vano.n8nmobile.ui.AiwaColors
 import com.vano.n8nmobile.ui.AiwaDecorativeFont
 import com.vano.n8nmobile.ui.AiwaPillGradient
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
@@ -178,7 +180,7 @@ fun ChatScreen(
                             border = BorderStroke(1.5.dp, AiwaColors.Pink),
                             shape = RoundedCornerShape(20.dp),
                             modifier = Modifier.background(
-                                if (isUser) AiwaColors.Pink else AiwaBubbleGradient,
+                                if (isUser) SolidColor(AiwaColors.Pink) else AiwaBubbleGradient,
                                 RoundedCornerShape(20.dp)
                             )
                         ) {
