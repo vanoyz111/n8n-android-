@@ -9,13 +9,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,15 +27,12 @@ import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.getValue
@@ -94,7 +91,11 @@ class MainActivity : ComponentActivity() {
             var isDark by remember { mutableStateOf(settingsStore.darkTheme) }
             val colors = if (isDark) AiwaColorScheme else lightColorScheme()
 
-            val chatMessages = remember { mutableStateListOf<ChatMessage>().apply { ChatStore.loadAll(context).firstOrNull()?.let { addAll(it.messages) } } }
+            val chatMessages = remember {
+                mutableStateListOf<ChatMessage>().apply {
+                    ChatStore.loadAll(context).firstOrNull()?.let { addAll(it.messages) }
+                }
+            }
 
             val savedFlow = remember { FlowStore.load(context) }
             val flowNodes = remember { mutableStateListOf<CanvasNode>().apply { addAll(savedFlow.nodes) } }
@@ -173,7 +174,9 @@ class MainActivity : ComponentActivity() {
                                             .background(AiwaColors.PanelBlack)
                                             .padding(12.dp)
                                     ) {
-                                        Column {
+                                        Column(
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
                                             if (conversationsList.isEmpty()) {
                                                 Text("Belum ada riwayat", color = Color.White.copy(alpha = 0.6f))
                                             } else {
@@ -181,33 +184,42 @@ class MainActivity : ComponentActivity() {
                                                     Row(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
+                                                            .clip(RoundedCornerShape(10.dp))
                                                             .clickable {
                                                                 chatMessages.clear()
                                                                 chatMessages.addAll(conv.messages)
                                                                 currentScreen = AppScreen.CHAT
                                                                 scope.launch { drawerState.close() }
                                                             }
-                                                            .padding(vertical = 8.dp),
-                                                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                                                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
                                                         Text(
                                                             conv.title,
                                                             color = Color.White,
                                                             maxLines = 1,
-                                                            modifier = Modifier.weight(1f)
-                                                        )
-                                                        IconButton(
-                                                            onClick = {
-                                                                ChatStore.delete(context, conv.id)
-                                                                conversationsList = ChatStore.loadAll(context)
-                                                            },
                                                             modifier = Modifier
-                                                                .size(32.dp)
+                                                                .weight(1f)
+                                                                .padding(end = 8.dp)
+                                                        )
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(26.dp)
                                                                 .clip(CircleShape)
                                                                 .background(AiwaColors.Pink)
+                                                                .clickable {
+                                                                    ChatStore.delete(context, conv.id)
+                                                                    conversationsList = ChatStore.loadAll(context)
+                                                                },
+                                                            contentAlignment = Alignment.Center
                                                         ) {
-                                                            Icon(Icons.Default.Delete, contentDescription = "Hapus", tint = Color.White, modifier = Modifier.size(16.dp))
+                                                            Icon(
+                                                                Icons.Default.Delete,
+                                                                contentDescription = "Hapus",
+                                                                tint = Color.White,
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
                                                         }
                                                     }
                                                 }

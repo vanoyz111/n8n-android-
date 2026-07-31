@@ -9,7 +9,10 @@ import android.provider.OpenableColumns
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,8 +25,10 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -49,8 +54,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.vano.n8nmobile.logging.AppLog
@@ -58,13 +67,6 @@ import com.vano.n8nmobile.ui.AiwaBubbleGradient
 import com.vano.n8nmobile.ui.AiwaColors
 import com.vano.n8nmobile.ui.AiwaDecorativeFont
 import com.vano.n8nmobile.ui.AiwaPillGradient
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -134,22 +136,51 @@ fun ChatScreen(
         modifier = Modifier.fillMaxSize().systemBarsPadding().imePadding()
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onOpenDrawer) {
-                Icon(Icons.Default.Menu, contentDescription = "Menu")
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(AiwaColors.Pink)
+                    .clickable(onClick = onOpenDrawer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
             }
-            IconButton(onClick = {
-                clearPendingAttachment()
-                onNewChat()
-            }) {
-                Icon(Icons.Default.Add, contentDescription = "Chat Baru")
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(AiwaPillGradient)
+                    .padding(horizontal = 24.dp, vertical = 8.dp)
+            ) {
+                Text("AIWA", color = Color.White, fontFamily = AiwaDecorativeFont, fontWeight = FontWeight.Bold)
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(AiwaColors.Pink)
+                    .clickable {
+                        messages.clear()
+                        ChatStore.save(context, ChatStore.newId(), "Percakapan baru", messages)
+                        onNewChat()
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Chat Baru", tint = Color.White)
             }
         }
 
         if (messages.isEmpty()) {
-            Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
                 Text(
                     "Halo, ada yang bisa saya bantu?",
                     style = MaterialTheme.typography.headlineSmall,
@@ -159,7 +190,7 @@ fun ChatScreen(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
                 reverseLayout = true
             ) {
                 if (isLoading) {
@@ -193,11 +224,11 @@ fun ChatScreen(
                                     }
                                 }
                                 msg.attachmentName?.let { name ->
-                                    Text("📎 $name", style = MaterialTheme.typography.bodySmall)
+                                    Text("📎 $name", color = Color.White, style = MaterialTheme.typography.bodySmall)
                                     Spacer(modifier = Modifier.height(4.dp))
                                 }
                                 if (msg.text.isNotBlank()) {
-                                    Text(msg.text)
+                                    Text(msg.text, color = Color.White)
                                 }
                             }
                         }
@@ -218,20 +249,31 @@ fun ChatScreen(
                     Text("📎 $name", modifier = Modifier.padding(start = 8.dp))
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                IconButton(onClick = { clearPendingAttachment() }) {
-                    Icon(Icons.Default.Close, contentDescription = "Batal lampiran")
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(AiwaColors.Pink)
+                        .clickable { clearPendingAttachment() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Batal lampiran", tint = Color.White, modifier = Modifier.size(16.dp))
                 }
             }
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box {
-                IconButton(
-                    onClick = { attachMenuExpanded = true },
-                    modifier = Modifier.size(40.dp).clip(CircleShape).background(AiwaColors.Pink)
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(AiwaColors.Pink)
+                        .clickable { attachMenuExpanded = true },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(Icons.Default.AttachFile, contentDescription = "Lampirkan", tint = Color.White)
                 }
@@ -250,6 +292,9 @@ fun ChatScreen(
                     })
                 }
             }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
@@ -257,34 +302,40 @@ fun ChatScreen(
                 placeholder = { Text("Tanya AI...") },
                 shape = RoundedCornerShape(50)
             )
-            Spacer(modifier = Modifier.padding(4.dp))
-            IconButton(
-                modifier = Modifier.size(44.dp).clip(CircleShape).background(AiwaColors.Pink),
-                onClick = {
-                    val text = input.trim()
-                    if ((text.isEmpty() && pendingImageBase64 == null && pendingAttachmentName == null) || isLoading) return@IconButton
-                    messages.add(
-                        ChatMessage(
-                            role = "user",
-                            text = text,
-                            imageBase64 = pendingImageBase64,
-                            imageMimeType = if (pendingImageBase64 != null) "image/jpeg" else null,
-                            attachmentName = pendingAttachmentName
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(AiwaColors.Pink)
+                    .clickable {
+                        val text = input.trim()
+                        if ((text.isEmpty() && pendingImageBase64 == null && pendingAttachmentName == null) || isLoading) return@clickable
+                        messages.add(
+                            ChatMessage(
+                                role = "user",
+                                text = text,
+                                imageBase64 = pendingImageBase64,
+                                imageMimeType = if (pendingImageBase64 != null) "image/jpeg" else null,
+                                attachmentName = pendingAttachmentName
+                            )
                         )
-                    )
-                    input = ""
-                    clearPendingAttachment()
-                    isLoading = true
-                    onMessagesChanged()
-                    AppLog.add("CHAT", "User: ${text.take(60)}")
-                    scope.launch {
-                        val historySnapshot = messages.toList()
-                        val reply = AiClient.sendMessage(context, historySnapshot)
-                        messages.add(ChatMessage(role = "ai", text = reply))
-                        isLoading = false
+                        input = ""
+                        clearPendingAttachment()
+                        isLoading = true
                         onMessagesChanged()
-                    }
-                }
+                        AppLog.add("CHAT", "User: ${text.take(60)}")
+                        scope.launch {
+                            val historySnapshot = messages.toList()
+                            val reply = AiClient.sendMessage(context, historySnapshot)
+                            messages.add(ChatMessage(role = "ai", text = reply))
+                            isLoading = false
+                            onMessagesChanged()
+                        }
+                    },
+                contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Color.White)
             }
