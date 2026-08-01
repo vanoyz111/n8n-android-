@@ -71,7 +71,7 @@ import com.vano.n8nmobile.ui.AiwaPillGradient
 import com.vano.n8nmobile.ui.AiBubbleShape
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.offset
+import androidx.compose.foundation.layout.offset
 import com.vano.n8nmobile.R
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
