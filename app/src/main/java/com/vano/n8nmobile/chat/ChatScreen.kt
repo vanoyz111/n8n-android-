@@ -68,10 +68,10 @@ import com.vano.n8nmobile.ui.AiwaBubbleGradient
 import com.vano.n8nmobile.ui.AiwaColors
 import com.vano.n8nmobile.ui.AiwaDecorativeFont
 import com.vano.n8nmobile.ui.AiwaPillGradient
-import com.vano.n8nmobile.ui.AiBubbleShape
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
 import com.vano.n8nmobile.R
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
@@ -208,44 +208,36 @@ fun ChatScreen(
                 }
                 items(messages.reversed()) { msg ->
                     val isUser = msg.role == "user"
-                    if (isUser) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                                border = BorderStroke(1.5.dp, AiwaColors.Pink),
-                                shape = RoundedCornerShape(50),
-                                modifier = Modifier.background(SolidColor(AiwaColors.Pink), RoundedCornerShape(50))
-                            ) {
-                                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                                    MessageContent(msg)
-                                }
-                            }
-                        }
-                    } else {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(AiBubbleShape(cornerRadius = 20.dp, tailWidth = 16.dp, tailHeight = 14.dp))
-                                        .background(AiwaBubbleGradient, AiBubbleShape(cornerRadius = 20.dp, tailWidth = 16.dp, tailHeight = 14.dp))
-                                        .border(1.5.dp, AiwaColors.Pink, AiBubbleShape(cornerRadius = 20.dp, tailWidth = 16.dp, tailHeight = 14.dp))
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(start = 14.dp, top = 12.dp, end = 14.dp, bottom = 12.dp + 14.dp)
-                                    ) {
-                                        MessageContent(msg)
-                                    }
-                                }
-                            }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        if (!isUser) {
                             Image(
                                 painter = painterResource(id = R.mipmap.ic_launcher),
                                 contentDescription = null,
                                 modifier = Modifier
-                                    .padding(start = 6.dp)
-                                    .offset(y = (-12).dp)
-                                    .size(30.dp)
+                                    .padding(top = 2.dp)
+                                    .size(28.dp)
                                     .clip(CircleShape)
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                            border = BorderStroke(1.5.dp, AiwaColors.Pink),
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier
+                                .widthIn(max = 280.dp)
+                                .background(
+                                    if (isUser) SolidColor(AiwaColors.Pink) else AiwaBubbleGradient,
+                                    RoundedCornerShape(20.dp)
+                                )
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                MessageContent(msg)
+                            }
                         }
                     }
                 }
