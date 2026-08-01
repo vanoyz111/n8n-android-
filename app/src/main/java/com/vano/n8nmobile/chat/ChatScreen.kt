@@ -173,7 +173,6 @@ fun ChatScreen(
                     .background(AiwaColors.Pink)
                     .clickable {
                         messages.clear()
-                        ChatStore.save(context, ChatStore.newId(), "Percakapan baru", messages)
                         onNewChat()
                     },
                 contentAlignment = Alignment.Center

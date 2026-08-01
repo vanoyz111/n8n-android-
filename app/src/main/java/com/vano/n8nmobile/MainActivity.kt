@@ -16,9 +16,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -92,9 +92,11 @@ class MainActivity : ComponentActivity() {
             var isDark by remember { mutableStateOf(settingsStore.darkTheme) }
             val colors = if (isDark) AiwaColorScheme else lightColorScheme()
 
+            val initialConversation = remember { ChatStore.loadAll(context).firstOrNull() }
+            var currentConversationId by remember { mutableStateOf(initialConversation?.id ?: ChatStore.newId()) }
             val chatMessages = remember {
                 mutableStateListOf<ChatMessage>().apply {
-                    ChatStore.loadAll(context).firstOrNull()?.let { addAll(it.messages) }
+                    initialConversation?.let { addAll(it.messages) }
                 }
             }
 
@@ -189,6 +191,7 @@ class MainActivity : ComponentActivity() {
                                                             .clickable {
                                                                 chatMessages.clear()
                                                                 chatMessages.addAll(conv.messages)
+                                                                currentConversationId = conv.id
                                                                 currentScreen = AppScreen.CHAT
                                                                 scope.launch { drawerState.close() }
                                                             }
@@ -212,6 +215,10 @@ class MainActivity : ComponentActivity() {
                                                                 .clickable {
                                                                     ChatStore.delete(context, conv.id)
                                                                     conversationsList = ChatStore.loadAll(context)
+                                                                    if (conv.id == currentConversationId) {
+                                                                        chatMessages.clear()
+                                                                        currentConversationId = ChatStore.newId()
+                                                                    }
                                                                 },
                                                             contentAlignment = Alignment.Center
                                                         ) {
@@ -235,12 +242,16 @@ class MainActivity : ComponentActivity() {
                             AppScreen.CHAT -> ChatScreen(
                                 messages = chatMessages,
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
-                                onNewChat = { chatMessages.clear() },
+                                onNewChat = {
+                                    chatMessages.clear()
+                                    currentConversationId = ChatStore.newId()
+                                    conversationsList = ChatStore.loadAll(context)
+                                },
                                 onMessagesChanged = {
                                     if (chatMessages.isNotEmpty()) {
                                         val title = chatMessages.firstOrNull { it.role == "user" && it.text.isNotBlank() }
                                             ?.text?.take(40) ?: "Percakapan baru"
-                                        ChatStore.save(context, ChatStore.newId(), title, chatMessages.toList())
+                                        ChatStore.save(context, currentConversationId, title, chatMessages.toList())
                                         conversationsList = ChatStore.loadAll(context)
                                     }
                                 }
