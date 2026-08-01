@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.vano.n8nmobile.logging.AppLog
 
 @Composable
-fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit, onOpenAutoReply: () -> Unit, onOpenLocalAi: () -> Unit) {
+fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit, onOpenAutoReply: () -> Unit, onOpenLocalAi: () -> Unit, onOpenThemeCustomization: () -> Unit) {
     val context = LocalContext.current
     val store = remember { SettingsStore(context) }
 
@@ -189,6 +189,11 @@ fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit, 
                 store.darkTheme = it
                 onThemeChanged(it)
             })
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        Button(onClick = onOpenThemeCustomization) {
+            Text("Kustomisasi Warna Tampilan")
         }
 
         Spacer(modifier = Modifier.height(24.dp))

@@ -70,9 +70,11 @@ import com.vano.n8nmobile.ui.AiwaColors
 import com.vano.n8nmobile.ui.AiwaDecorativeFont
 import com.vano.n8nmobile.ui.AiwaHeaderGradient
 import com.vano.n8nmobile.ui.AiwaPillGradient
+import com.vano.n8nmobile.ui.AiwaThemeStore
+import com.vano.n8nmobile.ui.ThemeCustomizationScreen
 import kotlinx.coroutines.launch
 
-private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI }
+private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM }
 
 class MainActivity : ComponentActivity() {
 
@@ -88,6 +90,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val context = LocalContext.current
+            remember { AiwaThemeStore(context).loadIntoMemory() }
+
             val settingsStore = remember { SettingsStore(context) }
             var isDark by remember { mutableStateOf(settingsStore.darkTheme) }
             val colors = if (isDark) AiwaColorScheme else lightColorScheme()
@@ -267,12 +271,16 @@ class MainActivity : ComponentActivity() {
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
                                 onThemeChanged = { newDark -> isDark = newDark },
                                 onOpenAutoReply = { currentScreen = AppScreen.AUTOREPLY },
-                                onOpenLocalAi = { currentScreen = AppScreen.LOCAL_AI }
+                                onOpenLocalAi = { currentScreen = AppScreen.LOCAL_AI },
+                                onOpenThemeCustomization = { currentScreen = AppScreen.THEME_CUSTOM }
                             )
                             AppScreen.AUTOREPLY -> AutoReplyScreen(
                                 onBack = { currentScreen = AppScreen.SETTINGS }
                             )
                             AppScreen.LOCAL_AI -> LocalModelScreen(
+                                onBack = { currentScreen = AppScreen.SETTINGS }
+                            )
+                            AppScreen.THEME_CUSTOM -> ThemeCustomizationScreen(
                                 onBack = { currentScreen = AppScreen.SETTINGS }
                             )
                         }
