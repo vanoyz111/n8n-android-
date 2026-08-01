@@ -46,6 +46,20 @@ object AiClient {
         return primaryResult
     }
 
+    suspend fun sendMessageWithMode(context: Context, history: List<ChatMessage>, mode: String): String {
+        val settings = SettingsStore(context)
+        return when (mode) {
+            "local_gguf" -> withContext(Dispatchers.IO) { callLocalLlamatik(context, history, settings) }
+            "local_litert" -> {
+                val litertPath = LiteRtModelStore.getDownloadedModelPath(context)
+                    ?: return "Model LiteRT belum didownload. Buka Settings > AI Lokal."
+                withContext(Dispatchers.IO) { callLocalLiteRt(context, history, settings, litertPath) }
+            }
+            "online" -> callPrimaryProvider(context, history, settings)
+            else -> sendMessage(context, history)
+        }
+    }
+
     private suspend fun callPrimaryProvider(
         context: Context,
         history: List<ChatMessage>,

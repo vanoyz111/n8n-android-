@@ -14,6 +14,7 @@ object AutoReplyStore {
     private const val KEY_CONTACT_FILTER_MODE = "contact_filter_mode"
     private const val KEY_GROUP_ENABLED = "group_enabled"
     private const val KEY_CONTACT_LIST = "contact_list"
+    private const val KEY_AI_MODE = "ai_mode"
 
     fun newId(): String = UUID.randomUUID().toString()
 
@@ -90,5 +91,12 @@ object AutoReplyStore {
         val array = JSONArray()
         contacts.forEach { array.put(it) }
         prefs(context).edit().putString(KEY_CONTACT_LIST, array.toString()).apply()
+    }
+
+    // "auto", "local_gguf", "local_litert", "online"
+    fun getAiMode(context: Context): String = prefs(context).getString(KEY_AI_MODE, "auto") ?: "auto"
+
+    fun setAiMode(context: Context, mode: String) {
+        prefs(context).edit().putString(KEY_AI_MODE, mode).apply()
     }
 }

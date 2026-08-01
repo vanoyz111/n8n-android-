@@ -125,7 +125,7 @@ class WhatsAppNotificationListener : NotificationListenerService() {
                     } else {
                         "Balas pesan WhatsApp berikut secara singkat dan ramah atas nama saya: $messageText"
                     }
-                    val reply = AiClient.sendMessage(applicationContext, listOf(ChatMessage("user", prompt)))
+                    val reply = AiClient.sendMessageWithMode(applicationContext, listOf(ChatMessage("user", prompt)), AutoReplyStore.getAiMode(applicationContext))
                     if (com.vano.n8nmobile.chat.AiClient.isFailureMessage(reply)) {
                         AppLog.add("AUTOREPLY_ERROR", "AI gagal, TIDAK dikirim ke WhatsApp: ${reply.take(100)}")
                         releaseSender(sender, applyCooldown = false)

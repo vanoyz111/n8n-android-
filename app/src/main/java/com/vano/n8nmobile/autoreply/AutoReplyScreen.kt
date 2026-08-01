@@ -1,7 +1,12 @@
 package com.vano.n8nmobile.autoreply
 
+import android.Manifest
+import android.content.Context
 import android.content.Intent
+import android.provider.ContactsContract
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
@@ -34,11 +41,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private data class FilterModeOption(val value: String, val label: String)
 
@@ -49,9 +60,19 @@ private val filterModeOptions = listOf(
     FilterModeOption("EXCEPT_PHONE_CONTACTS", "Kecuali kontak telepon saya")
 )
 
+private data class AiModeOption(val value: String, val label: String)
+
+private val aiModeOptions = listOf(
+    AiModeOption("auto", "Otomatis (online, fallback ke lokal kalau gagal)"),
+    AiModeOption("online", "Online saja (API Key di Settings)"),
+    AiModeOption("local_gguf", "AI Lokal - GGUF (Llamatik)"),
+    AiModeOption("local_litert", "AI Lokal - LiteRT-LM")
+)
+
 @Composable
 fun AutoReplyScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     var enabled by remember { mutableStateOf(AutoReplyStore.isEnabled(context)) }
     var aiFallback by remember { mutableStateOf(AutoReplyStore.isAiFallbackEnabled(context)) }
@@ -60,10 +81,26 @@ fun AutoReplyScreen(onBack: () -> Unit) {
     var showAddRuleDialog by remember { mutableStateOf(false) }
     var savedMessage by remember { mutableStateOf<String?>(null) }
 
+    var aiMode by remember { mutableStateOf(AutoReplyStore.getAiMode(context)) }
+
     var filterMode by remember { mutableStateOf(AutoReplyStore.getContactFilterMode(context)) }
     var groupEnabled by remember { mutableStateOf(AutoReplyStore.isGroupEnabled(context)) }
     var contactList by remember { mutableStateOf(AutoReplyStore.getContactList(context)) }
     var showAddContactDialog by remember { mutableStateOf(false) }
+    var showDeviceContactsDialog by remember { mutableStateOf(false) }
+    var deviceContacts by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isLoadingContacts by remember { mutableStateOf(false) }
+
+    val contactsPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            isLoadingContacts = true
+            scope.launch {
+                deviceContacts = queryDeviceContacts(context)
+                isLoadingContacts = false
+                showDeviceContactsDialog = true
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -94,6 +131,42 @@ fun AutoReplyScreen(onBack: () -> Unit) {
         }
         Spacer(modifier = Modifier.height(4.dp))
         Text("Cari \"Aiwa\" di daftar itu, lalu aktifkan.", style = MaterialTheme.typography.bodySmall)
+
+        Spacer(modifier = Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text("Provider AI buat Auto-Reply", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            "Ini terpisah dari pengaturan AI di layar Chat.",
+            style = MaterialTheme.typography.bodySmall
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        aiModeOptions.forEach { option ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = aiMode == option.value,
+                        onClick = {
+                            aiMode = option.value
+                            AutoReplyStore.setAiMode(context, option.value)
+                        }
+                    )
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = aiMode == option.value,
+                    onClick = {
+                        aiMode = option.value
+                        AutoReplyStore.setAiMode(context, option.value)
+                    }
+                )
+                Text(option.label)
+            }
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
         HorizontalDivider()
@@ -149,16 +222,21 @@ fun AutoReplyScreen(onBack: () -> Unit) {
 
         if (filterMode == "WHITELIST" || filterMode == "BLACKLIST") {
             Spacer(modifier = Modifier.height(16.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Daftar Kontak", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Text("Daftar Kontak", style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+            Row {
                 Button(onClick = { showAddContactDialog = true }) {
-                    Text("+ Kontak")
+                    Text("+ Manual")
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(onClick = { contactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS) }) {
+                    Text(if (isLoadingContacts) "Memuat..." else "Dari Kontak HP")
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
 
             if (contactList.isEmpty()) {
-                Text("Belum ada kontak. Nama harus sama persis kayak nama pengirim di notifikasi WhatsApp.", style = MaterialTheme.typography.bodySmall)
+                Text("Belum ada kontak.", style = MaterialTheme.typography.bodySmall)
             } else {
                 contactList.forEach { contact ->
                     Row(
@@ -204,7 +282,7 @@ fun AutoReplyScreen(onBack: () -> Unit) {
             value = personaPrompt,
             onValueChange = { personaPrompt = it },
             label = { Text("Instruksi AI buat balasan (opsional)") },
-            placeholder = { Text("Contoh: Balas singkat, ramah, bahasa Indonesia santai.") },
+            placeholder = { Text("Contoh: Selalu jawab pakai Bahasa Indonesia yang santai.") },
             modifier = Modifier.fillMaxWidth(),
             minLines = 3
         )
@@ -305,7 +383,7 @@ fun AutoReplyScreen(onBack: () -> Unit) {
         var contactName by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showAddContactDialog = false },
-            title = { Text("Tambah Kontak") },
+            title = { Text("Tambah Kontak Manual") },
             text = {
                 OutlinedTextField(
                     value = contactName,
@@ -329,4 +407,71 @@ fun AutoReplyScreen(onBack: () -> Unit) {
             }
         )
     }
+
+    if (showDeviceContactsDialog) {
+        var searchQuery by remember { mutableStateOf("") }
+        val filtered = deviceContacts.filter { it.contains(searchQuery, ignoreCase = true) }
+        AlertDialog(
+            onDismissRequest = { showDeviceContactsDialog = false },
+            title = { Text("Pilih dari Kontak HP") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        label = { Text("Cari kontak") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyColumn(modifier = Modifier.height(320.dp)) {
+                        items(filtered) { name ->
+                            val alreadyAdded = contactList.contains(name)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .selectable(selected = alreadyAdded, onClick = {
+                                        if (!alreadyAdded) {
+                                            val updated = contactList + name
+                                            contactList = updated
+                                            AutoReplyStore.setContactList(context, updated)
+                                        }
+                                    })
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(checked = alreadyAdded, onCheckedChange = { checked ->
+                                    val updated = if (checked) contactList + name else contactList.filterNot { it == name }
+                                    contactList = updated
+                                    AutoReplyStore.setContactList(context, updated)
+                                })
+                                Text(name)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDeviceContactsDialog = false }) { Text("Selesai") }
+            }
+        )
+    }
+}
+
+private suspend fun queryDeviceContacts(context: Context): List<String> = withContext(Dispatchers.IO) {
+    val names = mutableListOf<String>()
+    val cursor = context.contentResolver.query(
+        ContactsContract.Contacts.CONTENT_URI,
+        arrayOf(ContactsContract.Contacts.DISPLAY_NAME),
+        null,
+        null,
+        "${ContactsContract.Contacts.DISPLAY_NAME} ASC"
+    )
+    cursor?.use {
+        val nameIndex = it.getColumnIndex(ContactsContract.Contacts.DISPLAY_NAME)
+        while (it.moveToNext()) {
+            val name = it.getString(nameIndex)
+            if (!name.isNullOrBlank()) names.add(name)
+        }
+    }
+    names.distinct()
 }
