@@ -9,6 +9,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 object ModelDownloader {
+    // dipakai lintas package: localai dan imagegen
     suspend fun download(
         context: Context,
         url: String,
