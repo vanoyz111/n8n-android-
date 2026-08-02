@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -329,9 +330,10 @@ fun ChatScreen(
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).heightIn(max = 120.dp),
                 placeholder = { Text("Tanya AI...") },
-                shape = RoundedCornerShape(50)
+                shape = RoundedCornerShape(24.dp),
+                maxLines = 5
             )
 
             Spacer(modifier = Modifier.width(8.dp))
