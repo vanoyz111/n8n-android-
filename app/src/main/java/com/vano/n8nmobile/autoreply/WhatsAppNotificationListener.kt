@@ -26,15 +26,20 @@ class WhatsAppNotificationListener : NotificationListenerService() {
     private val lock = Any()
     private val inFlightSenders = mutableSetOf<String>()
     private val lastReplyAt = mutableMapOf<String, Long>()
-    private val processedKeys = ArrayDeque<String>()
+    private val lastProcessedContent = mutableMapOf<String, String>()
     private val recentReplyTimestamps = mutableListOf<Long>()
 
+    private val errorPrefixes = listOf(
+        "Terjadi error", "Gagal manggil Gemini", "API key Gemini belum diisi",
+        "Gemini gak ngasih jawaban", "Base URL AI belum diisi", "Gagal manggil AI",
+        "AI gak ngasih jawaban", "Model lokal belum didownload", "Gagal memuat model lokal",
+        "Gagal menjalankan AI lokal", "Model LiteRT belum didownload"
+    )
 
     companion object {
         private const val SENDER_COOLDOWN_MS = 15_000L
         private const val CIRCUIT_BREAKER_WINDOW_MS = 60_000L
         private const val CIRCUIT_BREAKER_MAX_REPLIES = 5
-        private const val MAX_PROCESSED_KEYS = 100
         private val PHONE_NUMBER_REGEX = Regex("^[+0-9\\s\\-()]{6,}$")
     }
 
@@ -83,7 +88,7 @@ class WhatsAppNotificationListener : NotificationListenerService() {
         }
 
         val allowed = synchronized(lock) {
-            if (processedKeys.contains(sbn.key)) {
+            if (lastProcessedContent[sender] == messageText) {
                 false
             } else if (inFlightSenders.contains(sender)) {
                 AppLog.add("AUTOREPLY", "Dilewati: masih proses balasan sebelumnya buat $sender")
@@ -96,8 +101,7 @@ class WhatsAppNotificationListener : NotificationListenerService() {
                     false
                 } else {
                     inFlightSenders.add(sender)
-                    processedKeys.addLast(sbn.key)
-                    if (processedKeys.size > MAX_PROCESSED_KEYS) processedKeys.removeFirst()
+                    lastProcessedContent[sender] = messageText
                     true
                 }
             }
@@ -125,8 +129,9 @@ class WhatsAppNotificationListener : NotificationListenerService() {
                     } else {
                         "Balas pesan WhatsApp berikut secara singkat dan ramah atas nama saya: $messageText"
                     }
-                    val reply = AiClient.sendMessageWithMode(applicationContext, listOf(ChatMessage("user", prompt)), AutoReplyStore.getAiMode(applicationContext))
-                    if (com.vano.n8nmobile.chat.AiClient.isFailureMessage(reply)) {
+                    val mode = AutoReplyStore.getAiMode(applicationContext)
+                    val reply = AiClient.sendMessageWithMode(applicationContext, listOf(ChatMessage("user", prompt)), mode)
+                    if (errorPrefixes.any { reply.startsWith(it) }) {
                         AppLog.add("AUTOREPLY_ERROR", "AI gagal, TIDAK dikirim ke WhatsApp: ${reply.take(100)}")
                         releaseSender(sender, applyCooldown = false)
                     } else {
