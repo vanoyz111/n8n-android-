@@ -67,6 +67,7 @@ import com.vano.n8nmobile.autoreply.WhatsAppNotificationListener
 import android.content.ComponentName
 import android.service.notification.NotificationListenerService
 import com.vano.n8nmobile.localai.LocalModelScreen
+import com.vano.n8nmobile.localai.ModelSettingsScreen
 import com.vano.n8nmobile.settings.SettingsScreen
 import com.vano.n8nmobile.settings.SettingsStore
 import com.vano.n8nmobile.ui.AiwaColorScheme
@@ -78,7 +79,7 @@ import com.vano.n8nmobile.ui.AiwaThemeStore
 import com.vano.n8nmobile.ui.ThemeCustomizationScreen
 import kotlinx.coroutines.launch
 
-private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM }
+private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS }
 
 class MainActivity : ComponentActivity() {
 
@@ -290,7 +291,11 @@ class MainActivity : ComponentActivity() {
                                 onBack = { currentScreen = AppScreen.SETTINGS }
                             )
                             AppScreen.LOCAL_AI -> LocalModelScreen(
-                                onBack = { currentScreen = AppScreen.SETTINGS }
+                                onBack = { currentScreen = AppScreen.SETTINGS },
+                                onOpenModelSettings = { currentScreen = AppScreen.MODEL_SETTINGS }
+                            )
+                            AppScreen.MODEL_SETTINGS -> ModelSettingsScreen(
+                                onBack = { currentScreen = AppScreen.LOCAL_AI }
                             )
                             AppScreen.THEME_CUSTOM -> ThemeCustomizationScreen(
                                 onBack = { currentScreen = AppScreen.SETTINGS }

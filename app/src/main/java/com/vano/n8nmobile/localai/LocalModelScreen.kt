@@ -56,7 +56,7 @@ private const val CURATED_FILENAME = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
 private enum class LocalRuntime { GGUF, LITERT }
 
 @Composable
-fun LocalModelScreen(onBack: () -> Unit) {
+fun LocalModelScreen(onBack: () -> Unit, onOpenModelSettings: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -84,6 +84,14 @@ fun LocalModelScreen(onBack: () -> Unit) {
         )
 
         Spacer(modifier = Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onOpenModelSettings) {
+                Text("Pengaturan Model")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = { selectedRuntime = LocalRuntime.GGUF },
@@ -254,7 +262,7 @@ private fun GgufSection(context: Context, scope: kotlinx.coroutines.CoroutineSco
             testResult = null
             scope.launch {
                 try {
-                    val loaded = LocalModelRuntime.ensureLoaded(path)
+                    val loaded = LocalModelRuntime.ensureLoaded(context, path)
                     if (!loaded) {
                         testResult = "Gagal memuat model. Cek RAM HP cukup atau coba model lebih kecil."
                     } else {

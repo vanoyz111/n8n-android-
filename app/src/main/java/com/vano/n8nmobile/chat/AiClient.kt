@@ -89,7 +89,7 @@ object AiClient {
                 val modelPath = LocalModelStore.getDownloadedModelPath(context)
                     ?: return@withContext "Model lokal belum didownload. Buka Settings > AI Lokal."
 
-                val loaded = LocalModelRuntime.ensureLoaded(modelPath)
+                val loaded = LocalModelRuntime.ensureLoaded(context, modelPath)
                 if (!loaded) return@withContext "Gagal memuat model lokal."
 
                 val messages = mutableListOf<Pair<String, String>>()
