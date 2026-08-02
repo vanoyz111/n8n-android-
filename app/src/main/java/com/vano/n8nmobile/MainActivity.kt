@@ -62,6 +62,10 @@ import com.vano.n8nmobile.chat.ChatMessage
 import com.vano.n8nmobile.chat.ChatScreen
 import com.vano.n8nmobile.chat.ChatStore
 import com.vano.n8nmobile.autoreply.AutoReplyScreen
+import com.vano.n8nmobile.autoreply.AutoReplyStore
+import com.vano.n8nmobile.autoreply.WhatsAppNotificationListener
+import android.content.ComponentName
+import android.service.notification.NotificationListenerService
 import com.vano.n8nmobile.localai.LocalModelScreen
 import com.vano.n8nmobile.settings.SettingsScreen
 import com.vano.n8nmobile.settings.SettingsStore
@@ -86,6 +90,14 @@ class MainActivity : ComponentActivity() {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        if (AutoReplyStore.isEnabled(this)) {
+            try {
+                NotificationListenerService.requestRebind(
+                    ComponentName(this, WhatsAppNotificationListener::class.java)
+                )
+            } catch (e: Exception) { }
         }
 
         setContent {

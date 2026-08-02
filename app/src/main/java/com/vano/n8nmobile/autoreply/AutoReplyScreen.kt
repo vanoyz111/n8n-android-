@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.provider.ContactsContract
 import android.provider.Settings
+import android.service.notification.NotificationListenerService
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -132,6 +133,20 @@ fun AutoReplyScreen(onBack: () -> Unit) {
         }
         Spacer(modifier = Modifier.height(4.dp))
         Text("Cari \"Aiwa\" di daftar itu, lalu aktifkan.", style = MaterialTheme.typography.bodySmall)
+
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedButton(onClick = {
+            try {
+                NotificationListenerService.requestRebind(
+                    android.content.ComponentName(context, WhatsAppNotificationListener::class.java)
+                )
+                savedMessage = "Diminta sambung ulang ke sistem notifikasi"
+            } catch (e: Exception) {
+                savedMessage = "Gagal minta sambung ulang: ${e.message}"
+            }
+        }) {
+            Text("Sambungkan Ulang Listener")
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
         HorizontalDivider()
