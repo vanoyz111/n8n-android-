@@ -12,8 +12,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,14 +24,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Card
@@ -57,16 +58,22 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.vano.n8nmobile.R
 import com.vano.n8nmobile.logging.AppLog
@@ -74,6 +81,7 @@ import com.vano.n8nmobile.ui.AiwaBubbleGradient
 import com.vano.n8nmobile.ui.AiwaColors
 import com.vano.n8nmobile.ui.AiwaDecorativeFont
 import com.vano.n8nmobile.ui.AiwaPillGradient
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -91,7 +99,9 @@ fun ChatScreen(
     var isLoading by remember { mutableStateOf(false) }
     var attachMenuExpanded by remember { mutableStateOf(false) }
     var chatMode by remember { mutableStateOf(ChatModeStore.getMode(context)) }
+    var thinkingEnabled by remember { mutableStateOf(ChatModeStore.isThinkingEnabled(context)) }
     var modeMenuExpanded by remember { mutableStateOf(false) }
+    var animatedUpTo by remember { mutableStateOf(messages.size - 1) }
 
     var pendingImageBase64 by remember { mutableStateOf<String?>(null) }
     var pendingImageBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -170,7 +180,7 @@ fun ChatScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            ChatModeStore.labelFor(chatMode),
+                            ChatModeStore.labelFor(chatMode) + if (thinkingEnabled) " 💭" else "",
                             color = Color.White,
                             fontFamily = AiwaDecorativeFont,
                             fontWeight = FontWeight.Bold
@@ -189,6 +199,13 @@ fun ChatScreen(
                             }
                         )
                     }
+                    DropdownMenuItem(
+                        text = { Text(if (thinkingEnabled) "💭 Mode Thinking: ON" else "💭 Mode Thinking: OFF") },
+                        onClick = {
+                            thinkingEnabled = !thinkingEnabled
+                            ChatModeStore.setThinkingEnabled(context, thinkingEnabled)
+                        }
+                    )
                 }
             }
 
@@ -231,8 +248,10 @@ fun ChatScreen(
                         }
                     }
                 }
-                items(messages.reversed()) { msg ->
+                itemsIndexed(messages.reversed()) { reversedIndex, msg ->
+                    val originalIndex = messages.size - 1 - reversedIndex
                     val isUser = msg.role == "user"
+                    val shouldAnimate = !isUser && originalIndex == messages.lastIndex && originalIndex > animatedUpTo
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
@@ -261,7 +280,11 @@ fun ChatScreen(
                                 )
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
-                                MessageContent(msg)
+                                MessageContent(
+                                    msg = msg,
+                                    animate = shouldAnimate,
+                                    onAnimationDone = { animatedUpTo = originalIndex }
+                                )
                             }
                         }
                     }
@@ -377,7 +400,7 @@ fun ChatScreen(
 }
 
 @Composable
-private fun MessageContent(msg: ChatMessage) {
+private fun MessageContent(msg: ChatMessage, animate: Boolean = false, onAnimationDone: () -> Unit = {}) {
     msg.imageBase64?.let { b64 ->
         val bitmap = remember(b64) { decodeBase64ToBitmap(b64) }
         bitmap?.let {
@@ -389,8 +412,139 @@ private fun MessageContent(msg: ChatMessage) {
         Text("\ud83d\udcce $name", color = Color.White, style = MaterialTheme.typography.bodySmall)
         Spacer(modifier = Modifier.height(4.dp))
     }
+
     if (msg.text.isNotBlank()) {
-        Text(msg.text, color = Color.White)
+        val (thinking, mainText) = remember(msg.text) { extractThinking(msg.text) }
+
+        thinking?.let { ThinkingBlock(it) }
+
+        if (animate) {
+            var visibleChars by remember(mainText) { mutableStateOf(0) }
+            LaunchedEffect(mainText) {
+                val step = maxOf(1, mainText.length / 100)
+                while (visibleChars < mainText.length) {
+                    visibleChars = minOf(mainText.length, visibleChars + step)
+                    delay(12L)
+                }
+                onAnimationDone()
+            }
+            RenderMessageBody(mainText.substring(0, visibleChars))
+        } else {
+            RenderMessageBody(mainText)
+        }
+    }
+}
+
+@Composable
+private fun ThinkingBlock(thinking: String) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.White.copy(alpha = 0.08f))
+            .clickable { expanded = !expanded }
+            .padding(10.dp)
+    ) {
+        Text(
+            if (expanded) "💭 Proses berpikir (tap buat tutup)" else "💭 Proses berpikir (tap buat lihat)",
+            color = Color.Gray,
+            fontSize = 12.sp,
+            fontStyle = FontStyle.Italic
+        )
+        if (expanded) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(thinking, color = Color.Gray, fontSize = 12.sp, fontStyle = FontStyle.Italic)
+        }
+    }
+}
+
+@Composable
+private fun RenderMessageBody(text: String) {
+    val segments = remember(text) { parseSegments(text) }
+    Column {
+        segments.forEach { seg ->
+            if (seg.isCode) {
+                CodeBlock(seg.content, seg.language)
+            } else if (seg.content.isNotBlank()) {
+                Text(seg.content.trim('\n'), color = Color.White)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CodeBlock(code: String, language: String?) {
+    val clipboardManager = LocalClipboardManager.current
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xFF0D0D0D))
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(language ?: "code", color = Color.Gray, fontSize = 11.sp)
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.15f))
+                        .clickable { clipboardManager.setText(AnnotatedString(code)) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Salin kode", tint = Color.White, modifier = Modifier.size(14.dp))
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                code.trim('\n'),
+                color = Color(0xFF7CFC9A),
+                fontFamily = FontFamily.Monospace,
+                fontSize = 13.sp,
+                modifier = Modifier.horizontalScroll(rememberScrollState())
+            )
+        }
+    }
+}
+
+private data class TextSegment(val isCode: Boolean, val language: String?, val content: String)
+
+private fun parseSegments(text: String): List<TextSegment> {
+    val segments = mutableListOf<TextSegment>()
+    val regex = Regex("```(\\w*)\\n?([\\s\\S]*?)```")
+    var lastEnd = 0
+    regex.findAll(text).forEach { match ->
+        if (match.range.first > lastEnd) {
+            segments.add(TextSegment(false, null, text.substring(lastEnd, match.range.first)))
+        }
+        val lang = match.groupValues[1].ifBlank { null }
+        val code = match.groupValues[2]
+        segments.add(TextSegment(true, lang, code))
+        lastEnd = match.range.last + 1
+    }
+    if (lastEnd < text.length) {
+        segments.add(TextSegment(false, null, text.substring(lastEnd)))
+    }
+    if (segments.isEmpty()) segments.add(TextSegment(false, null, text))
+    return segments
+}
+
+private fun extractThinking(text: String): Pair<String?, String> {
+    val regex = Regex("<thinking>([\\s\\S]*?)</thinking>", RegexOption.IGNORE_CASE)
+    val match = regex.find(text)
+    return if (match != null) {
+        val thinkingText = match.groupValues[1].trim()
+        val rest = text.removeRange(match.range).trim()
+        thinkingText to rest
+    } else {
+        null to text
     }
 }
 

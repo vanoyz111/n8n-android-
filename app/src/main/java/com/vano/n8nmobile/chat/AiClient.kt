@@ -20,10 +20,23 @@ object AiClient {
         "Terjadi error", "Gagal manggil Gemini", "API key Gemini belum diisi",
         "Gemini gak ngasih jawaban", "Base URL AI belum diisi", "Gagal manggil AI",
         "AI gak ngasih jawaban", "Model lokal belum didownload", "Gagal memuat model lokal",
-        "Gagal menjalankan AI lokal"
+        "Gagal menjalankan AI lokal", "Model LiteRT belum didownload"
     )
 
+    private const val THINKING_INSTRUCTION =
+        "Sebelum menjawab, tulis proses berpikirmu secara singkat di antara tag <thinking> dan </thinking>, " +
+            "lalu lanjutkan dengan jawaban akhir di luar tag itu."
+
     fun isFailureMessage(text: String): Boolean = errorPrefixes.any { text.startsWith(it) }
+
+    private fun effectiveSystemPrompt(context: Context, settings: SettingsStore): String {
+        val base = settings.systemPrompt
+        return if (ChatModeStore.isThinkingEnabled(context)) {
+            if (base.isBlank()) THINKING_INSTRUCTION else "$base\n\n$THINKING_INSTRUCTION"
+        } else {
+            base
+        }
+    }
 
     suspend fun sendMessage(context: Context, history: List<ChatMessage>): String {
         val settings = SettingsStore(context)
@@ -67,10 +80,11 @@ object AiClient {
     ): String {
         return withContext(Dispatchers.IO) {
             try {
+                val prompt = effectiveSystemPrompt(context, settings)
                 if (settings.aiProvider == "openai_compatible") {
-                    callOpenAiCompatible(settings, history)
+                    callOpenAiCompatible(settings, history, prompt)
                 } else {
-                    callGemini(settings, history)
+                    callGemini(settings, history, prompt)
                 }
             } catch (e: Exception) {
                 AppLog.add("AI_ERROR", e.message ?: "Unknown error")
@@ -92,19 +106,20 @@ object AiClient {
                 val loaded = LocalModelRuntime.ensureLoaded(context, modelPath)
                 if (!loaded) return@withContext "Gagal memuat model lokal."
 
+                val prompt = effectiveSystemPrompt(context, settings)
                 val messages = mutableListOf<Pair<String, String>>()
-                if (settings.systemPrompt.isNotBlank()) {
-                    messages.add("system" to settings.systemPrompt)
+                if (prompt.isNotBlank()) {
+                    messages.add("system" to prompt)
                 }
                 history.forEach { msg ->
                     messages.add((if (msg.role == "user") "user" else "assistant") to msg.text)
                 }
 
-                val prompt = LocalModelRuntime.applyChatTemplate(messages)
+                val finalPrompt = LocalModelRuntime.applyChatTemplate(messages)
                     ?: history.lastOrNull { it.role == "user" }?.text
                     ?: ""
 
-                val result = LocalModelRuntime.generate(prompt)
+                val result = LocalModelRuntime.generate(finalPrompt)
                 AppLog.add("CHAT", "AI Lokal (GGUF) merespons (${result.length} karakter)")
                 result
             } catch (e: Exception) {
@@ -122,7 +137,8 @@ object AiClient {
     ): String {
         return withContext(Dispatchers.IO) {
             try {
-                val loaded = LiteRtRuntime.ensureLoaded(context, modelPath, settings.systemPrompt)
+                val prompt = effectiveSystemPrompt(context, settings)
+                val loaded = LiteRtRuntime.ensureLoaded(context, modelPath, prompt)
                 if (!loaded) return@withContext "Gagal memuat model lokal."
                 val lastUserMessage = history.lastOrNull { it.role == "user" }?.text ?: ""
                 val result = LiteRtRuntime.generate(lastUserMessage)
@@ -135,7 +151,7 @@ object AiClient {
         }
     }
 
-    private fun callGemini(settings: SettingsStore, history: List<ChatMessage>): String {
+    private fun callGemini(settings: SettingsStore, history: List<ChatMessage>, systemPrompt: String): String {
         val apiKey = settings.geminiApiKey
         if (apiKey.isBlank()) return "API key Gemini belum diisi. Buka Settings buat masukin API key."
         val model = settings.geminiModel.ifBlank { "gemini-flash-latest" }
@@ -186,9 +202,9 @@ object AiClient {
 
         val bodyJson = JSONObject().apply {
             put("contents", contents)
-            if (settings.systemPrompt.isNotBlank()) {
+            if (systemPrompt.isNotBlank()) {
                 put("systemInstruction", JSONObject().apply {
-                    put("parts", JSONArray().put(JSONObject().apply { put("text", settings.systemPrompt) }))
+                    put("parts", JSONArray().put(JSONObject().apply { put("text", systemPrompt) }))
                 })
             }
         }
@@ -213,7 +229,7 @@ object AiClient {
         return text ?: "Gemini gak ngasih jawaban (response kosong)."
     }
 
-    private fun callOpenAiCompatible(settings: SettingsStore, history: List<ChatMessage>): String {
+    private fun callOpenAiCompatible(settings: SettingsStore, history: List<ChatMessage>, systemPrompt: String): String {
         val baseUrl = settings.customBaseUrl.trimEnd('/')
         if (baseUrl.isBlank()) return "Base URL AI belum diisi. Buka Settings buat masukin URL-nya."
         val url = URL("$baseUrl/v1/chat/completions")
@@ -228,8 +244,8 @@ object AiClient {
         connection.readTimeout = 60000
 
         val messages = JSONArray()
-        if (settings.systemPrompt.isNotBlank()) {
-            messages.put(JSONObject().apply { put("role", "system"); put("content", settings.systemPrompt) })
+        if (systemPrompt.isNotBlank()) {
+            messages.put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
         }
         history.forEach { msg ->
             val role = if (msg.role == "user") "user" else "assistant"
