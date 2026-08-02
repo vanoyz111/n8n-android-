@@ -26,6 +26,7 @@ object LocalModelRuntime {
             repeatPenalty = repeatPenalty,
             contextLength = contextLength,
             numThreads = threads,
+            batchSize = 512,
             useMmap = true,
             flashAttention = false,
             gpuLayers = gpuLayers

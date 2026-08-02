@@ -37,7 +37,7 @@ object LiteRtRuntime {
                 val newEngine = Engine(engineConfig)
                 newEngine.initialize()
 
-                val samplerConfig = SamplerConfig(topK = topK, topP = topP, temperature = temperature)
+                val samplerConfig = SamplerConfig(topK = topK, topP = topP.toDouble(), temperature = temperature.toDouble())
                 val conversationConfig = if (systemPrompt.isNotBlank()) {
                     ConversationConfig(systemInstruction = Contents.of(systemPrompt), samplerConfig = samplerConfig)
                 } else {
