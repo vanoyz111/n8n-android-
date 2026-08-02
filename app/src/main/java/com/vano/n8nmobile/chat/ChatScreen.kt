@@ -10,9 +10,9 @@ import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,9 +23,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -33,6 +35,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
@@ -60,19 +63,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import com.vano.n8nmobile.R
 import com.vano.n8nmobile.logging.AppLog
 import com.vano.n8nmobile.ui.AiwaBubbleGradient
 import com.vano.n8nmobile.ui.AiwaColors
 import com.vano.n8nmobile.ui.AiwaDecorativeFont
 import com.vano.n8nmobile.ui.AiwaPillGradient
-import androidx.compose.foundation.Image
-import androidx.compose.ui.res.painterResource
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.widthIn
-import com.vano.n8nmobile.R
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -89,6 +89,8 @@ fun ChatScreen(
     var input by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var attachMenuExpanded by remember { mutableStateOf(false) }
+    var chatMode by remember { mutableStateOf(ChatModeStore.getMode(context)) }
+    var modeMenuExpanded by remember { mutableStateOf(false) }
 
     var pendingImageBase64 by remember { mutableStateOf<String?>(null) }
     var pendingImageBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -157,13 +159,36 @@ fun ChatScreen(
                 Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
             }
 
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(AiwaPillGradient)
-                    .padding(horizontal = 24.dp, vertical = 8.dp)
-            ) {
-                Text("AIWA", color = Color.White, fontFamily = AiwaDecorativeFont, fontWeight = FontWeight.Bold)
+            Box {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(AiwaPillGradient)
+                        .clickable { modeMenuExpanded = true }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            ChatModeStore.labelFor(chatMode),
+                            color = Color.White,
+                            fontFamily = AiwaDecorativeFont,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Color.White)
+                    }
+                }
+                DropdownMenu(expanded = modeMenuExpanded, onDismissRequest = { modeMenuExpanded = false }) {
+                    ChatModeStore.allModes.forEach { mode ->
+                        DropdownMenuItem(
+                            text = { Text(ChatModeStore.labelFor(mode)) },
+                            onClick = {
+                                chatMode = mode
+                                ChatModeStore.setMode(context, mode)
+                                modeMenuExpanded = false
+                            }
+                        )
+                    }
+                }
             }
 
             Box(
@@ -335,7 +360,7 @@ fun ChatScreen(
                         AppLog.add("CHAT", "User: ${text.take(60)}")
                         scope.launch {
                             val historySnapshot = messages.toList()
-                            val reply = AiClient.sendMessage(context, historySnapshot)
+                            val reply = AiClient.sendMessageWithMode(context, historySnapshot, chatMode)
                             messages.add(ChatMessage(role = "ai", text = reply))
                             isLoading = false
                             onMessagesChanged()
