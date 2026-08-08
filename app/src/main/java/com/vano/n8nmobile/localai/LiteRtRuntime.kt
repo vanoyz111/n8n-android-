@@ -8,6 +8,7 @@ import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.SamplerConfig
+import com.vano.n8nmobile.logging.AppLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -26,6 +27,7 @@ object LiteRtRuntime {
 
             if (loadedSignature == signature && conversation != null) return@withContext true
             try {
+                AppLog.add("LITERT", "Mulai load model: $modelPath (GPU=$useGpu)")
                 conversation?.close()
                 engine?.close()
 
@@ -48,8 +50,10 @@ object LiteRtRuntime {
                 engine = newEngine
                 conversation = newConversation
                 loadedSignature = signature
+                AppLog.add("LITERT", "Model berhasil dimuat")
                 true
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                AppLog.add("LITERT_ERROR", "${e.javaClass.simpleName}: ${e.message}")
                 false
             }
         }
