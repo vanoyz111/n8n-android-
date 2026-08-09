@@ -19,43 +19,53 @@ object LiteRtRuntime {
 
     suspend fun ensureLoaded(context: Context, modelPath: String, systemPrompt: String): Boolean =
         withContext(Dispatchers.IO) {
-            val useGpu = LocalAiSettingsStore.isLitertGpuEnabled(context)
+            val useGpuPreference = LocalAiSettingsStore.isLitertGpuEnabled(context)
             val temperature = LocalAiSettingsStore.getLitertTemperature(context)
             val topP = LocalAiSettingsStore.getLitertTopP(context)
             val topK = LocalAiSettingsStore.getLitertTopK(context)
-            val signature = "$modelPath|$useGpu|$temperature|$topP|$topK|$systemPrompt"
+            val signature = "$modelPath|$useGpuPreference|$temperature|$topP|$topK|$systemPrompt"
 
             if (loadedSignature == signature && conversation != null) return@withContext true
-            try {
-                AppLog.add("LITERT", "Mulai load model: $modelPath (GPU=$useGpu)")
-                conversation?.close()
-                engine?.close()
 
-                val engineConfig = EngineConfig(
-                    modelPath = modelPath,
-                    backend = if (useGpu) Backend.GPU() else Backend.CPU(),
-                    cacheDir = context.cacheDir.path
-                )
-                val newEngine = Engine(engineConfig)
-                newEngine.initialize()
-
-                val samplerConfig = SamplerConfig(topK = topK, topP = topP.toDouble(), temperature = temperature.toDouble())
-                val conversationConfig = if (systemPrompt.isNotBlank()) {
-                    ConversationConfig(systemInstruction = Contents.of(systemPrompt), samplerConfig = samplerConfig)
-                } else {
-                    ConversationConfig(samplerConfig = samplerConfig)
-                }
-                val newConversation = newEngine.createConversation(conversationConfig)
-
-                engine = newEngine
-                conversation = newConversation
-                loadedSignature = signature
-                AppLog.add("LITERT", "Model berhasil dimuat")
-                true
-            } catch (e: Throwable) {
-                AppLog.add("LITERT_ERROR", "${e.javaClass.simpleName}: ${e.message}")
-                false
+            val samplerConfig = SamplerConfig(topK = topK, topP = topP.toDouble(), temperature = temperature.toDouble())
+            val conversationConfig = if (systemPrompt.isNotBlank()) {
+                ConversationConfig(systemInstruction = Contents.of(systemPrompt), samplerConfig = samplerConfig)
+            } else {
+                ConversationConfig(samplerConfig = samplerConfig)
             }
+
+            fun tryLoad(useGpu: Boolean): Boolean {
+                return try {
+                    AppLog.add("LITERT", "Mulai load model: $modelPath (GPU=$useGpu)")
+                    conversation?.close()
+                    engine?.close()
+
+                    val engineConfig = EngineConfig(
+                        modelPath = modelPath,
+                        backend = if (useGpu) Backend.GPU() else Backend.CPU(),
+                        cacheDir = context.cacheDir.path
+                    )
+                    val newEngine = Engine(engineConfig)
+                    newEngine.initialize()
+                    val newConversation = newEngine.createConversation(conversationConfig)
+
+                    engine = newEngine
+                    conversation = newConversation
+                    loadedSignature = signature
+                    AppLog.add("LITERT", "Model berhasil dimuat (GPU=$useGpu)")
+                    true
+                } catch (e: Throwable) {
+                    AppLog.add("LITERT_ERROR", "${e.javaClass.simpleName}: ${e.message}")
+                    false
+                }
+            }
+
+            var ok = tryLoad(useGpuPreference)
+            if (!ok && useGpuPreference) {
+                AppLog.add("LITERT", "GPU gagal, coba ulang pakai CPU...")
+                ok = tryLoad(false)
+            }
+            ok
         }
 
     suspend fun generate(prompt: String): String = withContext(Dispatchers.IO) {
