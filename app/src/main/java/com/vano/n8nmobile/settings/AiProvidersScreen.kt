@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -58,7 +59,8 @@ fun AiProvidersScreen(onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            "Tambah provider AI custom (format OpenAI-compatible). Semua yang kamu tambahin di sini otomatis muncul di pemilih mode di layar Chat.",
+            "Tambah provider AI custom. Atur Tier-nya: Tier 1 dicoba paling awal, kalau semua provider di " +
+                "Tier 1 gagal/limit baru pindah ke Tier 2, lalu Tier 3. Kalau semuanya gagal, otomatis jatuh ke AI Lokal.",
             style = MaterialTheme.typography.bodySmall
         )
 
@@ -67,8 +69,8 @@ fun AiProvidersScreen(onBack: () -> Unit) {
             Column(modifier = Modifier.padding(12.dp)) {
                 Text("OpenRouter", style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    "Satu API key buat akses 20+ provider (Claude, GPT, Llama, Mistral, dll). " +
-                        "Ambil key di openrouter.ai/keys, lihat daftar nama model di openrouter.ai/models.",
+                    "Satu API key buat akses 40+ provider (Claude, GPT, Llama, Mistral, dll). " +
+                        "Ambil key di openrouter.ai/keys, nama model di openrouter.ai/models.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -98,30 +100,39 @@ fun AiProvidersScreen(onBack: () -> Unit) {
         if (profiles.isEmpty()) {
             Text("Belum ada provider tambahan.", style = MaterialTheme.typography.bodySmall)
         } else {
-            profiles.forEach { profile ->
-                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable {
-                                    editingProfile = profile
-                                    prefillOpenRouter = false
-                                    showAddDialog = true
+            listOf(1, 2, 3).forEach { tierNum ->
+                val tierProfiles = profiles.filter { it.tier == tierNum }
+                if (tierProfiles.isNotEmpty()) {
+                    Text("Tier $tierNum", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+                    tierProfiles.forEach { profile ->
+                        Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            editingProfile = profile
+                                            prefillOpenRouter = false
+                                            showAddDialog = true
+                                        }
+                                ) {
+                                    Text(profile.name, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        "${profile.model.ifBlank { "(model belum diisi)" }} · ${profile.apiKeys.size} key",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
                                 }
-                        ) {
-                            Text(profile.name, style = MaterialTheme.typography.bodyMedium)
-                            Text(profile.model.ifBlank { "(model belum diisi)" }, style = MaterialTheme.typography.bodySmall)
-                        }
-                        IconButton(onClick = {
-                            val updated = profiles.filterNot { it.id == profile.id }
-                            profiles = updated
-                            AiProfileStore.setProfiles(context, updated)
-                        }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Hapus")
+                                IconButton(onClick = {
+                                    val updated = profiles.filterNot { it.id == profile.id }
+                                    profiles = updated
+                                    AiProfileStore.setProfiles(context, updated)
+                                }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Hapus")
+                                }
+                            }
                         }
                     }
                 }
@@ -135,8 +146,9 @@ fun AiProvidersScreen(onBack: () -> Unit) {
         val existing = editingProfile
         var name by remember { mutableStateOf(existing?.name ?: if (prefillOpenRouter) "OpenRouter" else "") }
         var baseUrl by remember { mutableStateOf(existing?.baseUrl ?: if (prefillOpenRouter) "https://openrouter.ai/api" else "") }
-        var apiKey by remember { mutableStateOf(existing?.apiKey ?: "") }
+        var apiKeysText by remember { mutableStateOf(existing?.apiKeys?.joinToString("\n") ?: "") }
         var model by remember { mutableStateOf(existing?.model ?: "") }
+        var tier by remember { mutableStateOf(existing?.tier ?: 1) }
 
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
@@ -147,7 +159,13 @@ fun AiProvidersScreen(onBack: () -> Unit) {
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(value = baseUrl, onValueChange = { baseUrl = it }, label = { Text("Base URL") }, modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("API Key") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        value = apiKeysText,
+                        onValueChange = { apiKeysText = it },
+                        label = { Text("API Key (satu per baris buat rotasi)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = model,
@@ -155,17 +173,30 @@ fun AiProvidersScreen(onBack: () -> Unit) {
                         label = { Text(if (prefillOpenRouter) "Model (contoh: anthropic/claude-3.5-sonnet)" else "Model") },
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Tier", style = MaterialTheme.typography.bodyMedium)
+                    Row {
+                        listOf(1, 2, 3).forEach { t ->
+                            Button(
+                                onClick = { tier = t },
+                                colors = if (tier == t) ButtonDefaults.buttonColors() else ButtonDefaults.outlinedButtonColors(),
+                                modifier = Modifier.padding(end = 8.dp)
+                            ) { Text("Tier $t") }
+                        }
+                    }
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
                     if (name.isNotBlank() && baseUrl.isNotBlank()) {
+                        val keys = apiKeysText.lines().map { it.trim() }.filter { it.isNotBlank() }
                         val newProfile = AiProfile(
                             id = existing?.id ?: AiProfileStore.newId(),
                             name = name.trim(),
                             baseUrl = baseUrl.trim(),
-                            apiKey = apiKey.trim(),
-                            model = model.trim()
+                            apiKeys = keys,
+                            model = model.trim(),
+                            tier = tier
                         )
                         val updated = if (existing != null) {
                             profiles.map { if (it.id == existing.id) newProfile else it }

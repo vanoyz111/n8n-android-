@@ -9,8 +9,9 @@ data class AiProfile(
     val id: String,
     val name: String,
     val baseUrl: String,
-    val apiKey: String,
-    val model: String
+    val apiKeys: List<String>,
+    val model: String,
+    val tier: Int
 )
 
 object AiProfileStore {
@@ -26,12 +27,20 @@ object AiProfileStore {
             val array = JSONArray(raw)
             (0 until array.length()).map { i ->
                 val obj = array.getJSONObject(i)
+                val keysArray = obj.optJSONArray("apiKeys")
+                val keys = if (keysArray != null) {
+                    (0 until keysArray.length()).map { keysArray.getString(it) }
+                } else {
+                    val oldKey = obj.optString("apiKey", "")
+                    if (oldKey.isNotBlank()) listOf(oldKey) else emptyList()
+                }
                 AiProfile(
                     id = obj.getString("id"),
                     name = obj.getString("name"),
                     baseUrl = obj.getString("baseUrl"),
-                    apiKey = obj.getString("apiKey"),
-                    model = obj.getString("model")
+                    apiKeys = keys,
+                    model = obj.getString("model"),
+                    tier = obj.optInt("tier", 1)
                 )
             }
         } catch (e: Exception) {
@@ -46,8 +55,9 @@ object AiProfileStore {
                 put("id", p.id)
                 put("name", p.name)
                 put("baseUrl", p.baseUrl)
-                put("apiKey", p.apiKey)
+                put("apiKeys", JSONArray(p.apiKeys))
                 put("model", p.model)
+                put("tier", p.tier)
             })
         }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_PROFILES, array.toString()).apply()

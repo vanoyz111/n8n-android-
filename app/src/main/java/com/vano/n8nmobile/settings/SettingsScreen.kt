@@ -52,6 +52,7 @@ fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit, 
     var customModel by remember { mutableStateOf(store.customModel) }
     var systemPrompt by remember { mutableStateOf(store.systemPrompt) }
     var darkTheme by remember { mutableStateOf(store.darkTheme) }
+    var tokenSaver by remember { mutableStateOf(store.tokenSaverEnabled) }
     var providerMenuExpanded by remember { mutableStateOf(false) }
     var savedMessage by remember { mutableStateOf<String?>(null) }
 
@@ -219,6 +220,19 @@ fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit, 
         Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = onOpenAiProviders) {
             Text("Kelola Provider AI (OpenRouter, dll)")
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text("Performa & Biaya", style = MaterialTheme.typography.titleMedium)
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+            Text("Hemat Token (potong riwayat chat lama)", modifier = Modifier.weight(1f))
+            Switch(checked = tokenSaver, onCheckedChange = {
+                tokenSaver = it
+                store.tokenSaverEnabled = it
+            })
         }
 
         Spacer(modifier = Modifier.height(24.dp))

@@ -22,7 +22,8 @@ object AiClient {
         "Terjadi error", "Gagal manggil Gemini", "API key Gemini belum diisi",
         "Gemini gak ngasih jawaban", "Base URL AI belum diisi", "Gagal manggil AI",
         "AI gak ngasih jawaban", "Model lokal belum didownload", "Gagal memuat model lokal",
-        "Gagal menjalankan AI lokal", "Model LiteRT belum didownload", "Provider gak ketemu"
+        "Gagal menjalankan AI lokal", "Model LiteRT belum didownload", "Provider gak ketemu",
+        "Semua API key"
     )
 
     private const val THINKING_INSTRUCTION =
@@ -40,29 +41,48 @@ object AiClient {
         }
     }
 
-    suspend fun sendMessage(context: Context, history: List<ChatMessage>): String {
-        val settings = SettingsStore(context)
-        val primaryResult = callPrimaryProvider(context, history, settings)
-
-        if (isFailureMessage(primaryResult)) {
-            val ggufPath = LocalModelStore.getDownloadedModelPath(context)
-            val litertPath = LiteRtModelStore.getDownloadedModelPath(context)
-            when {
-                ggufPath != null -> {
-                    AppLog.add("AI_FALLBACK", "Provider utama gagal, coba AI Lokal (GGUF)...")
-                    return callLocalLlamatik(context, history, settings)
-                }
-                litertPath != null -> {
-                    AppLog.add("AI_FALLBACK", "Provider utama gagal, coba AI Lokal (LiteRT-LM)...")
-                    return callLocalLiteRt(context, history, settings, litertPath)
-                }
-            }
+    private fun compressHistory(history: List<ChatMessage>, enabled: Boolean): List<ChatMessage> {
+        if (!enabled || history.size <= 4) return history
+        val cutoff = history.size - 4
+        return history.mapIndexed { index, msg ->
+            if (index < cutoff && msg.text.length > 200) {
+                msg.copy(text = msg.text.take(200) + "... [dipotong buat hemat token]")
+            } else msg
         }
-        return primaryResult
     }
 
-    suspend fun sendMessageWithMode(context: Context, history: List<ChatMessage>, mode: String): String {
+    suspend fun sendMessage(context: Context, historyRaw: List<ChatMessage>): String {
         val settings = SettingsStore(context)
+        val history = compressHistory(historyRaw, settings.tokenSaverEnabled)
+        val prompt = effectiveSystemPrompt(context, settings)
+        val profiles = AiProfileStore.getProfiles(context)
+
+        val primaryResult = callPrimaryProvider(context, history, settings)
+        if (!isFailureMessage(primaryResult)) return primaryResult
+
+        for (tierNum in 1..3) {
+            val tierProfiles = profiles.filter { it.tier == tierNum }
+            if (tierProfiles.isEmpty()) continue
+            AppLog.add("TIER_FALLBACK", "Coba provider Tier $tierNum...")
+            for (p in tierProfiles) {
+                val r = withContext(Dispatchers.IO) { callProfileWithKeyRotation(p, history, prompt) }
+                if (!isFailureMessage(r)) return r
+            }
+        }
+
+        AppLog.add("TIER_FALLBACK", "Semua provider online gagal, coba AI Lokal...")
+        val ggufPath = LocalModelStore.getDownloadedModelPath(context)
+        val litertPath = LiteRtModelStore.getDownloadedModelPath(context)
+        return when {
+            ggufPath != null -> callLocalLlamatik(context, history, settings)
+            litertPath != null -> callLocalLiteRt(context, history, settings, litertPath)
+            else -> primaryResult
+        }
+    }
+
+    suspend fun sendMessageWithMode(context: Context, historyRaw: List<ChatMessage>, mode: String): String {
+        val settings = SettingsStore(context)
+        val history = compressHistory(historyRaw, settings.tokenSaverEnabled)
         return when {
             mode == "local_gguf" -> withContext(Dispatchers.IO) { callLocalLlamatik(context, history, settings) }
             mode == "local_litert" -> {
@@ -75,10 +95,24 @@ object AiClient {
                 val profileId = mode.removePrefix("profile:")
                 val profile = AiProfileStore.getProfile(context, profileId)
                     ?: return "Provider gak ketemu, mungkin udah dihapus."
-                withContext(Dispatchers.IO) { callProfile(profile, history, effectiveSystemPrompt(context, settings)) }
+                withContext(Dispatchers.IO) { callProfileWithKeyRotation(profile, history, effectiveSystemPrompt(context, settings)) }
             }
-            else -> sendMessage(context, history)
+            else -> sendMessage(context, historyRaw)
         }
+    }
+
+    private fun callProfileWithKeyRotation(profile: AiProfile, history: List<ChatMessage>, systemPrompt: String): String {
+        if (profile.apiKeys.isEmpty()) {
+            return callOpenAiCompatibleRaw(profile.baseUrl, "", profile.model, history, systemPrompt)
+        }
+        var lastError = ""
+        for (key in profile.apiKeys) {
+            val result = callOpenAiCompatibleRaw(profile.baseUrl, key, profile.model, history, systemPrompt)
+            if (!isFailureMessage(result)) return result
+            lastError = result
+            AppLog.add("AI_ROTATION", "Key gagal buat ${profile.name}, coba key berikutnya...")
+        }
+        return "Semua API key buat ${profile.name} gagal. Terakhir: $lastError"
     }
 
     private suspend fun callPrimaryProvider(
@@ -300,7 +334,4 @@ object AiClient {
 
     private fun callOpenAiCompatible(settings: SettingsStore, history: List<ChatMessage>, systemPrompt: String): String =
         callOpenAiCompatibleRaw(settings.customBaseUrl, settings.customApiKey, settings.customModel, history, systemPrompt)
-
-    private fun callProfile(profile: AiProfile, history: List<ChatMessage>, systemPrompt: String): String =
-        callOpenAiCompatibleRaw(profile.baseUrl, profile.apiKey, profile.model, history, systemPrompt)
 }
