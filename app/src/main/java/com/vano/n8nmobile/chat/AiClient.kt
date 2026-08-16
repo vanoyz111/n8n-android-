@@ -6,6 +6,8 @@ import com.vano.n8nmobile.localai.LiteRtRuntime
 import com.vano.n8nmobile.localai.LocalModelRuntime
 import com.vano.n8nmobile.localai.LocalModelStore
 import com.vano.n8nmobile.logging.AppLog
+import com.vano.n8nmobile.settings.AiProfile
+import com.vano.n8nmobile.settings.AiProfileStore
 import com.vano.n8nmobile.settings.SettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -20,7 +22,7 @@ object AiClient {
         "Terjadi error", "Gagal manggil Gemini", "API key Gemini belum diisi",
         "Gemini gak ngasih jawaban", "Base URL AI belum diisi", "Gagal manggil AI",
         "AI gak ngasih jawaban", "Model lokal belum didownload", "Gagal memuat model lokal",
-        "Gagal menjalankan AI lokal", "Model LiteRT belum didownload"
+        "Gagal menjalankan AI lokal", "Model LiteRT belum didownload", "Provider gak ketemu"
     )
 
     private const val THINKING_INSTRUCTION =
@@ -61,14 +63,20 @@ object AiClient {
 
     suspend fun sendMessageWithMode(context: Context, history: List<ChatMessage>, mode: String): String {
         val settings = SettingsStore(context)
-        return when (mode) {
-            "local_gguf" -> withContext(Dispatchers.IO) { callLocalLlamatik(context, history, settings) }
-            "local_litert" -> {
+        return when {
+            mode == "local_gguf" -> withContext(Dispatchers.IO) { callLocalLlamatik(context, history, settings) }
+            mode == "local_litert" -> {
                 val litertPath = LiteRtModelStore.getDownloadedModelPath(context)
                     ?: return "Model LiteRT belum didownload. Buka Settings > AI Lokal."
                 withContext(Dispatchers.IO) { callLocalLiteRt(context, history, settings, litertPath) }
             }
-            "online" -> callPrimaryProvider(context, history, settings)
+            mode == "online" -> callPrimaryProvider(context, history, settings)
+            mode.startsWith("profile:") -> {
+                val profileId = mode.removePrefix("profile:")
+                val profile = AiProfileStore.getProfile(context, profileId)
+                    ?: return "Provider gak ketemu, mungkin udah dihapus."
+                withContext(Dispatchers.IO) { callProfile(profile, history, effectiveSystemPrompt(context, settings)) }
+            }
             else -> sendMessage(context, history)
         }
     }
@@ -229,15 +237,21 @@ object AiClient {
         return text ?: "Gemini gak ngasih jawaban (response kosong)."
     }
 
-    private fun callOpenAiCompatible(settings: SettingsStore, history: List<ChatMessage>, systemPrompt: String): String {
-        val baseUrl = settings.customBaseUrl.trimEnd('/')
-        if (baseUrl.isBlank()) return "Base URL AI belum diisi. Buka Settings buat masukin URL-nya."
-        val url = URL("$baseUrl/v1/chat/completions")
+    private fun callOpenAiCompatibleRaw(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        history: List<ChatMessage>,
+        systemPrompt: String
+    ): String {
+        val trimmedBase = baseUrl.trimEnd('/')
+        if (trimmedBase.isBlank()) return "Base URL AI belum diisi. Buka Settings buat masukin URL-nya."
+        val url = URL("$trimmedBase/v1/chat/completions")
         val connection = url.openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
         connection.setRequestProperty("Content-Type", "application/json")
-        if (settings.customApiKey.isNotBlank()) {
-            connection.setRequestProperty("Authorization", "Bearer ${settings.customApiKey}")
+        if (apiKey.isNotBlank()) {
+            connection.setRequestProperty("Authorization", "Bearer $apiKey")
         }
         connection.doOutput = true
         connection.connectTimeout = 20000
@@ -261,7 +275,7 @@ object AiClient {
         }
 
         val bodyJson = JSONObject().apply {
-            put("model", settings.customModel.ifBlank { "default" })
+            put("model", model.ifBlank { "default" })
             put("messages", messages)
         }
         connection.outputStream.use { it.write(bodyJson.toString().toByteArray()) }
@@ -272,8 +286,8 @@ object AiClient {
         connection.disconnect()
 
         if (code !in 200..299) {
-            AppLog.add("AI_LOCAL_ERROR", "HTTP $code: ${responseText.take(200)}")
-            return "Gagal manggil AI (HTTP $code). Cek server/URL-nya."
+            AppLog.add("AI_PROVIDER_ERROR", "HTTP $code: ${responseText.take(200)}")
+            return "Gagal manggil AI (HTTP $code). Cek API key, model, atau URL-nya."
         }
 
         val json = JSONObject(responseText)
@@ -283,4 +297,10 @@ object AiClient {
         AppLog.add("CHAT", "AI merespons (${text?.length ?: 0} karakter)")
         return text ?: "AI gak ngasih jawaban (response kosong)."
     }
+
+    private fun callOpenAiCompatible(settings: SettingsStore, history: List<ChatMessage>, systemPrompt: String): String =
+        callOpenAiCompatibleRaw(settings.customBaseUrl, settings.customApiKey, settings.customModel, history, systemPrompt)
+
+    private fun callProfile(profile: AiProfile, history: List<ChatMessage>, systemPrompt: String): String =
+        callOpenAiCompatibleRaw(profile.baseUrl, profile.apiKey, profile.model, history, systemPrompt)
 }

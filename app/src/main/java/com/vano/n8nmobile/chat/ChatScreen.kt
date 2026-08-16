@@ -47,6 +47,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -77,6 +78,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.vano.n8nmobile.R
 import com.vano.n8nmobile.logging.AppLog
+import com.vano.n8nmobile.settings.AiProfileStore
 import com.vano.n8nmobile.ui.AiwaBubbleGradient
 import com.vano.n8nmobile.ui.AiwaColors
 import com.vano.n8nmobile.ui.AiwaDecorativeFont
@@ -91,7 +93,8 @@ fun ChatScreen(
     messages: MutableList<ChatMessage>,
     onOpenDrawer: () -> Unit,
     onNewChat: () -> Unit,
-    onMessagesChanged: () -> Unit
+    onMessagesChanged: () -> Unit,
+    onOpenAiProviders: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -180,7 +183,7 @@ fun ChatScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            ChatModeStore.labelFor(chatMode) + if (thinkingEnabled) " 💭" else "",
+                            ChatModeStore.labelFor(context, chatMode) + if (thinkingEnabled) " 💭" else "",
                             color = Color.White,
                             fontFamily = AiwaDecorativeFont,
                             fontWeight = FontWeight.Bold
@@ -189,9 +192,9 @@ fun ChatScreen(
                     }
                 }
                 DropdownMenu(expanded = modeMenuExpanded, onDismissRequest = { modeMenuExpanded = false }) {
-                    ChatModeStore.allModes.forEach { mode ->
+                    ChatModeStore.builtInModes.forEach { mode ->
                         DropdownMenuItem(
-                            text = { Text(ChatModeStore.labelFor(mode)) },
+                            text = { Text(ChatModeStore.labelFor(context, mode)) },
                             onClick = {
                                 chatMode = mode
                                 ChatModeStore.setMode(context, mode)
@@ -199,11 +202,34 @@ fun ChatScreen(
                             }
                         )
                     }
+                    val profiles = AiProfileStore.getProfiles(context)
+                    if (profiles.isNotEmpty()) {
+                        HorizontalDivider()
+                        profiles.forEach { profile ->
+                            val modeValue = "profile:${profile.id}"
+                            DropdownMenuItem(
+                                text = { Text(profile.name) },
+                                onClick = {
+                                    chatMode = modeValue
+                                    ChatModeStore.setMode(context, modeValue)
+                                    modeMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                    HorizontalDivider()
                     DropdownMenuItem(
                         text = { Text(if (thinkingEnabled) "💭 Mode Thinking: ON" else "💭 Mode Thinking: OFF") },
                         onClick = {
                             thinkingEnabled = !thinkingEnabled
                             ChatModeStore.setThinkingEnabled(context, thinkingEnabled)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("⚙ Kelola Provider AI") },
+                        onClick = {
+                            modeMenuExpanded = false
+                            onOpenAiProviders()
                         }
                     )
                 }

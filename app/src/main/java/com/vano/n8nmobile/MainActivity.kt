@@ -69,6 +69,7 @@ import android.service.notification.NotificationListenerService
 import com.vano.n8nmobile.localai.LocalModelScreen
 import com.vano.n8nmobile.localai.ModelSettingsScreen
 import com.vano.n8nmobile.imagegen.ImageGenScreen
+import com.vano.n8nmobile.settings.AiProvidersScreen
 import com.vano.n8nmobile.settings.SettingsScreen
 import com.vano.n8nmobile.settings.SettingsStore
 import com.vano.n8nmobile.ui.AiwaColorScheme
@@ -80,7 +81,7 @@ import com.vano.n8nmobile.ui.AiwaThemeStore
 import com.vano.n8nmobile.ui.ThemeCustomizationScreen
 import kotlinx.coroutines.launch
 
-private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN }
+private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN, AI_PROVIDERS }
 
 class MainActivity : ComponentActivity() {
 
@@ -272,7 +273,8 @@ class MainActivity : ComponentActivity() {
                                         ChatStore.save(context, currentConversationId, title, chatMessages.toList())
                                         conversationsList = ChatStore.loadAll(context)
                                     }
-                                }
+                                },
+                                onOpenAiProviders = { currentScreen = AppScreen.AI_PROVIDERS }
                             )
                             AppScreen.FLOW -> WorkflowCanvasScreen(
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
@@ -287,7 +289,11 @@ class MainActivity : ComponentActivity() {
                                 onOpenAutoReply = { currentScreen = AppScreen.AUTOREPLY },
                                 onOpenLocalAi = { currentScreen = AppScreen.LOCAL_AI },
                                 onOpenThemeCustomization = { currentScreen = AppScreen.THEME_CUSTOM },
-                                onOpenImageGen = { currentScreen = AppScreen.IMAGE_GEN }
+                                onOpenImageGen = { currentScreen = AppScreen.IMAGE_GEN },
+                                onOpenAiProviders = { currentScreen = AppScreen.AI_PROVIDERS }
+                            )
+                            AppScreen.AI_PROVIDERS -> AiProvidersScreen(
+                                onBack = { currentScreen = AppScreen.SETTINGS }
                             )
                             AppScreen.IMAGE_GEN -> ImageGenScreen(
                                 onBack = { currentScreen = AppScreen.SETTINGS }

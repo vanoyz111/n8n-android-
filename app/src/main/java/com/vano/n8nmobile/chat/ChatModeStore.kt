@@ -1,6 +1,7 @@
 package com.vano.n8nmobile.chat
 
 import android.content.Context
+import com.vano.n8nmobile.settings.AiProfileStore
 
 object ChatModeStore {
     private const val PREFS_NAME = "n8n_mobile_chat_mode"
@@ -21,12 +22,18 @@ object ChatModeStore {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putBoolean(KEY_THINKING, enabled).apply()
     }
 
-    fun labelFor(mode: String): String = when (mode) {
-        "online" -> "Online"
-        "local_gguf" -> "AI Lokal (GGUF)"
-        "local_litert" -> "AI Lokal (LiteRT)"
-        else -> "Otomatis"
+    fun labelFor(context: Context, mode: String): String {
+        if (mode.startsWith("profile:")) {
+            val id = mode.removePrefix("profile:")
+            return AiProfileStore.getProfile(context, id)?.name ?: "Provider Terhapus"
+        }
+        return when (mode) {
+            "online" -> "Online (Gemini)"
+            "local_gguf" -> "AI Lokal (GGUF)"
+            "local_litert" -> "AI Lokal (LiteRT)"
+            else -> "Otomatis"
+        }
     }
 
-    val allModes = listOf("auto", "online", "local_gguf", "local_litert")
+    val builtInModes = listOf("auto", "online", "local_gguf", "local_litert")
 }

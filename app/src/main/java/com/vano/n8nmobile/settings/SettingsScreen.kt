@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.vano.n8nmobile.logging.AppLog
 
 @Composable
-fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit, onOpenAutoReply: () -> Unit, onOpenLocalAi: () -> Unit, onOpenThemeCustomization: () -> Unit, onOpenImageGen: () -> Unit) {
+fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit, onOpenAutoReply: () -> Unit, onOpenLocalAi: () -> Unit, onOpenThemeCustomization: () -> Unit, onOpenImageGen: () -> Unit, onOpenAiProviders: () -> Unit) {
     val context = LocalContext.current
     val store = remember { SettingsStore(context) }
 
@@ -214,6 +214,11 @@ fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit, 
         Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = onOpenImageGen) {
             Text("Buka Image Generator (Offline)")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = onOpenAiProviders) {
+            Text("Kelola Provider AI (OpenRouter, dll)")
         }
 
         Spacer(modifier = Modifier.height(24.dp))
