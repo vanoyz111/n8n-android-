@@ -70,6 +70,7 @@ import com.vano.n8nmobile.localai.LocalModelScreen
 import com.vano.n8nmobile.localai.ModelSettingsScreen
 import com.vano.n8nmobile.imagegen.ImageGenScreen
 import com.vano.n8nmobile.settings.AiProvidersScreen
+import com.vano.n8nmobile.server.LocalServerScreen
 import com.vano.n8nmobile.settings.SettingsScreen
 import com.vano.n8nmobile.settings.SettingsStore
 import com.vano.n8nmobile.ui.AiwaColorScheme
@@ -81,7 +82,7 @@ import com.vano.n8nmobile.ui.AiwaThemeStore
 import com.vano.n8nmobile.ui.ThemeCustomizationScreen
 import kotlinx.coroutines.launch
 
-private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN, AI_PROVIDERS }
+private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN, AI_PROVIDERS, LOCAL_SERVER }
 
 class MainActivity : ComponentActivity() {
 
@@ -290,9 +291,13 @@ class MainActivity : ComponentActivity() {
                                 onOpenLocalAi = { currentScreen = AppScreen.LOCAL_AI },
                                 onOpenThemeCustomization = { currentScreen = AppScreen.THEME_CUSTOM },
                                 onOpenImageGen = { currentScreen = AppScreen.IMAGE_GEN },
-                                onOpenAiProviders = { currentScreen = AppScreen.AI_PROVIDERS }
+                                onOpenAiProviders = { currentScreen = AppScreen.AI_PROVIDERS },
+                                onOpenLocalServer = { currentScreen = AppScreen.LOCAL_SERVER }
                             )
                             AppScreen.AI_PROVIDERS -> AiProvidersScreen(
+                                onBack = { currentScreen = AppScreen.SETTINGS }
+                            )
+                            AppScreen.LOCAL_SERVER -> LocalServerScreen(
                                 onBack = { currentScreen = AppScreen.SETTINGS }
                             )
                             AppScreen.IMAGE_GEN -> ImageGenScreen(
