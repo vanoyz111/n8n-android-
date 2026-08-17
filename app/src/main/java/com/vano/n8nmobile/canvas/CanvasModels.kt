@@ -19,9 +19,11 @@ data class NodeTypeInfo(
 
 val availableNodeTypes = listOf(
     NodeTypeInfo("manualTrigger", "Manual Trigger", ""),
+    NodeTypeInfo("scheduleTrigger", "Schedule Trigger", "intervalMinutes=60"),
     NodeTypeInfo("httpRequest", "HTTP Request", "url=https://jsonplaceholder.typicode.com/todos/1\nmethod=GET"),
     NodeTypeInfo("setData", "Set Data", "pesan=halo dari node ini"),
     NodeTypeInfo("delay", "Delay", "ms=1000"),
     NodeTypeInfo("condition", "Condition", "key=httpStatus\nequals=200"),
+    NodeTypeInfo("aiAgent", "AI Agent", "prompt=Ringkas data ini: \$httpBody\nmode=auto"),
     NodeTypeInfo("notification", "Notification", "title=Workflow\ntext=Selesai")
 )

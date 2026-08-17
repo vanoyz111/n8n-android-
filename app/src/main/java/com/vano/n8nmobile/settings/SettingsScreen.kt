@@ -40,7 +40,17 @@ import androidx.compose.ui.unit.dp
 import com.vano.n8nmobile.logging.AppLog
 
 @Composable
-fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit, onOpenAutoReply: () -> Unit, onOpenLocalAi: () -> Unit, onOpenThemeCustomization: () -> Unit, onOpenImageGen: () -> Unit, onOpenAiProviders: () -> Unit, onOpenLocalServer: () -> Unit) {
+fun SettingsScreen(
+    onOpenDrawer: () -> Unit,
+    onThemeChanged: (Boolean) -> Unit,
+    onOpenAutoReply: () -> Unit,
+    onOpenLocalAi: () -> Unit,
+    onOpenThemeCustomization: () -> Unit,
+    onOpenImageGen: () -> Unit,
+    onOpenAiProviders: () -> Unit,
+    onOpenLocalServer: () -> Unit,
+    onOpenAppLock: () -> Unit
+) {
     val context = LocalContext.current
     val store = remember { SettingsStore(context) }
 
@@ -191,10 +201,19 @@ fun SettingsScreen(onOpenDrawer: () -> Unit, onThemeChanged: (Boolean) -> Unit, 
                 onThemeChanged(it)
             })
         }
-
         Spacer(modifier = Modifier.height(12.dp))
         Button(onClick = onOpenThemeCustomization) {
             Text("Kustomisasi Warna Tampilan")
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text("Keamanan", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = onOpenAppLock) {
+            Text("Kunci App (PIN / Sidik Jari)")
         }
 
         Spacer(modifier = Modifier.height(24.dp))

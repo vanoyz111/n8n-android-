@@ -88,6 +88,7 @@ fun WorkflowCanvasScreen(
 
     fun persist() {
         FlowStore.save(context, nodes, edges, positions, nextIdState.value)
+        FlowScheduler.scheduleIfNeeded(context)
     }
 
     fun addNode(info: NodeTypeInfo) {

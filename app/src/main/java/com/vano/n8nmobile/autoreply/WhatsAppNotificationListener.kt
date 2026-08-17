@@ -33,7 +33,8 @@ class WhatsAppNotificationListener : NotificationListenerService() {
         "Terjadi error", "Gagal manggil Gemini", "API key Gemini belum diisi",
         "Gemini gak ngasih jawaban", "Base URL AI belum diisi", "Gagal manggil AI",
         "AI gak ngasih jawaban", "Model lokal belum didownload", "Gagal memuat model lokal",
-        "Gagal menjalankan AI lokal", "Model LiteRT belum didownload"
+        "Gagal menjalankan AI lokal", "Model LiteRT belum didownload", "Provider gak ketemu",
+        "Semua API key"
     )
 
     companion object {
@@ -41,6 +42,27 @@ class WhatsAppNotificationListener : NotificationListenerService() {
         private const val CIRCUIT_BREAKER_WINDOW_MS = 60_000L
         private const val CIRCUIT_BREAKER_MAX_REPLIES = 5
         private val PHONE_NUMBER_REGEX = Regex("^[+0-9\\s\\-()]{6,}$")
+
+        @Volatile var isConnected = false
+    }
+
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        isConnected = true
+        AppLog.add("AUTOREPLY", "Listener notifikasi tersambung")
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        isConnected = false
+        AppLog.add("AUTOREPLY", "Listener notifikasi terputus")
+        if (AutoReplyStore.isEnabled(applicationContext)) {
+            com.vano.n8nmobile.server.HealthCheckNotifier.notify(
+                applicationContext,
+                "Auto-Reply WhatsApp berhenti",
+                "Listener notifikasi terputus. Buka Aiwa buat sambungkan ulang."
+            )
+        }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {

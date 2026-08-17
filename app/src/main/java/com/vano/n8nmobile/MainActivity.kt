@@ -3,7 +3,7 @@ package com.vano.n8nmobile
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -71,6 +71,11 @@ import com.vano.n8nmobile.localai.ModelSettingsScreen
 import com.vano.n8nmobile.imagegen.ImageGenScreen
 import com.vano.n8nmobile.settings.AiProvidersScreen
 import com.vano.n8nmobile.server.LocalServerScreen
+import com.vano.n8nmobile.security.AppLockScreen
+import com.vano.n8nmobile.security.AppLockSettingsScreen
+import com.vano.n8nmobile.security.AppLockStore
+import com.vano.n8nmobile.canvas.FlowScheduler
+import com.vano.n8nmobile.server.HealthCheckScheduler
 import com.vano.n8nmobile.settings.SettingsScreen
 import com.vano.n8nmobile.settings.SettingsStore
 import com.vano.n8nmobile.ui.AiwaColorScheme
@@ -82,9 +87,9 @@ import com.vano.n8nmobile.ui.AiwaThemeStore
 import com.vano.n8nmobile.ui.ThemeCustomizationScreen
 import kotlinx.coroutines.launch
 
-private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN, AI_PROVIDERS, LOCAL_SERVER }
+private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN, AI_PROVIDERS, LOCAL_SERVER, APP_LOCK }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -104,10 +109,14 @@ class MainActivity : ComponentActivity() {
             } catch (e: Exception) { }
         }
 
+        FlowScheduler.scheduleIfNeeded(this)
+        HealthCheckScheduler.scheduleNext(this)
+
         setContent {
             val context = LocalContext.current
             remember { AiwaThemeStore(context).loadIntoMemory() }
 
+            var isUnlocked by remember { mutableStateOf(!AppLockStore.isLockEnabled(context)) }
             val settingsStore = remember { SettingsStore(context) }
             var isDark by remember { mutableStateOf(settingsStore.darkTheme) }
             val colors = if (isDark) AiwaColorScheme else lightColorScheme()
@@ -127,6 +136,10 @@ class MainActivity : ComponentActivity() {
             val flowNextId = remember { mutableStateOf(savedFlow.nextId) }
 
             MaterialTheme(colorScheme = colors) {
+                if (!isUnlocked) {
+                    AppLockScreen(onUnlocked = { isUnlocked = true })
+                    return@MaterialTheme
+                }
                 Surface(modifier = Modifier.fillMaxSize()) {
                     var currentScreen by remember { mutableStateOf(AppScreen.CHAT) }
                     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -292,7 +305,11 @@ class MainActivity : ComponentActivity() {
                                 onOpenThemeCustomization = { currentScreen = AppScreen.THEME_CUSTOM },
                                 onOpenImageGen = { currentScreen = AppScreen.IMAGE_GEN },
                                 onOpenAiProviders = { currentScreen = AppScreen.AI_PROVIDERS },
-                                onOpenLocalServer = { currentScreen = AppScreen.LOCAL_SERVER }
+                                onOpenLocalServer = { currentScreen = AppScreen.LOCAL_SERVER },
+                                onOpenAppLock = { currentScreen = AppScreen.APP_LOCK }
+                            )
+                            AppScreen.APP_LOCK -> AppLockSettingsScreen(
+                                onBack = { currentScreen = AppScreen.SETTINGS }
                             )
                             AppScreen.AI_PROVIDERS -> AiProvidersScreen(
                                 onBack = { currentScreen = AppScreen.SETTINGS }

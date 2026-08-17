@@ -20,6 +20,8 @@ class NodeRegistry {
             registry.register("condition", ConditionExecutor())
             registry.register("httpRequest", HttpRequestExecutor())
             registry.register("notification", NotificationExecutor(context))
+            registry.register("aiAgent", AiAgentExecutor(context))
+            registry.register("scheduleTrigger", ScheduleTriggerExecutor())
             return registry
         }
     }
