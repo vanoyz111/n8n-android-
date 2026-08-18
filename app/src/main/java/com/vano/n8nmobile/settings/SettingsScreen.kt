@@ -49,7 +49,8 @@ fun SettingsScreen(
     onOpenImageGen: () -> Unit,
     onOpenAiProviders: () -> Unit,
     onOpenLocalServer: () -> Unit,
-    onOpenAppLock: () -> Unit
+    onOpenAppLock: () -> Unit,
+    onOpenBackup: () -> Unit
 ) {
     val context = LocalContext.current
     val store = remember { SettingsStore(context) }
@@ -272,6 +273,16 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = onOpenAutoReply) {
             Text("Buka Pengaturan Auto-Reply")
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text("Data", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = onOpenBackup) {
+            Text("Backup & Restore")
         }
 
         Spacer(modifier = Modifier.height(24.dp))

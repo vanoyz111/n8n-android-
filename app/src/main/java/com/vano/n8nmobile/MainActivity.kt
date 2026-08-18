@@ -74,6 +74,7 @@ import com.vano.n8nmobile.server.LocalServerScreen
 import com.vano.n8nmobile.security.AppLockScreen
 import com.vano.n8nmobile.security.AppLockSettingsScreen
 import com.vano.n8nmobile.security.AppLockStore
+import com.vano.n8nmobile.backup.BackupRestoreScreen
 import com.vano.n8nmobile.canvas.FlowScheduler
 import com.vano.n8nmobile.server.HealthCheckScheduler
 import com.vano.n8nmobile.settings.SettingsScreen
@@ -87,7 +88,7 @@ import com.vano.n8nmobile.ui.AiwaThemeStore
 import com.vano.n8nmobile.ui.ThemeCustomizationScreen
 import kotlinx.coroutines.launch
 
-private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN, AI_PROVIDERS, LOCAL_SERVER, APP_LOCK }
+private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN, AI_PROVIDERS, LOCAL_SERVER, APP_LOCK, BACKUP }
 
 class MainActivity : FragmentActivity() {
 
@@ -306,9 +307,13 @@ class MainActivity : FragmentActivity() {
                                 onOpenImageGen = { currentScreen = AppScreen.IMAGE_GEN },
                                 onOpenAiProviders = { currentScreen = AppScreen.AI_PROVIDERS },
                                 onOpenLocalServer = { currentScreen = AppScreen.LOCAL_SERVER },
-                                onOpenAppLock = { currentScreen = AppScreen.APP_LOCK }
+                                onOpenAppLock = { currentScreen = AppScreen.APP_LOCK },
+                                onOpenBackup = { currentScreen = AppScreen.BACKUP }
                             )
                             AppScreen.APP_LOCK -> AppLockSettingsScreen(
+                                onBack = { currentScreen = AppScreen.SETTINGS }
+                            )
+                            AppScreen.BACKUP -> BackupRestoreScreen(
                                 onBack = { currentScreen = AppScreen.SETTINGS }
                             )
                             AppScreen.AI_PROVIDERS -> AiProvidersScreen(

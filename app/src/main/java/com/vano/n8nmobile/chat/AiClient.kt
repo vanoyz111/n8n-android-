@@ -101,6 +101,189 @@ object AiClient {
         }
     }
 
+    suspend fun sendMessageStreaming(
+        context: Context,
+        historyRaw: List<ChatMessage>,
+        mode: String,
+        onChunk: (String) -> Unit
+    ): String {
+        val settings = SettingsStore(context)
+        val history = compressHistory(historyRaw, settings.tokenSaverEnabled)
+        val prompt = effectiveSystemPrompt(context, settings)
+        return withContext(Dispatchers.IO) {
+            try {
+                when {
+                    mode == "online" -> {
+                        if (settings.aiProvider == "openai_compatible") {
+                            callOpenAiCompatibleStreamingRaw(settings.customBaseUrl, settings.customApiKey, settings.customModel, history, prompt, onChunk)
+                        } else {
+                            callGeminiStreaming(settings, history, prompt, onChunk)
+                        }
+                    }
+                    mode.startsWith("profile:") -> {
+                        val profileId = mode.removePrefix("profile:")
+                        val profile = AiProfileStore.getProfile(context, profileId)
+                            ?: return@withContext "Provider gak ketemu, mungkin udah dihapus."
+                        if (profile.apiKeys.isEmpty()) {
+                            callOpenAiCompatibleStreamingRaw(profile.baseUrl, "", profile.model, history, prompt, onChunk)
+                        } else {
+                            var result = "Semua API key buat ${profile.name} gagal."
+                            for (key in profile.apiKeys) {
+                                result = callOpenAiCompatibleStreamingRaw(profile.baseUrl, key, profile.model, history, prompt, onChunk)
+                                if (!isFailureMessage(result)) break
+                            }
+                            result
+                        }
+                    }
+                    else -> sendMessageWithMode(context, historyRaw, mode)
+                }
+            } catch (e: Exception) {
+                AppLog.add("AI_ERROR", e.message ?: "Unknown error")
+                "Terjadi error: ${e.message}"
+            }
+        }
+    }
+
+    private fun callGeminiStreaming(
+        settings: SettingsStore,
+        history: List<ChatMessage>,
+        systemPrompt: String,
+        onChunk: (String) -> Unit
+    ): String {
+        val apiKey = settings.geminiApiKey
+        if (apiKey.isBlank()) return "API key Gemini belum diisi. Buka Settings buat masukin API key."
+        val model = settings.geminiModel.ifBlank { "gemini-flash-latest" }
+        val url = URL("https://generativelanguage.googleapis.com/v1beta/models/$model:streamGenerateContent?alt=sse&key=$apiKey")
+        val connection = url.openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.doOutput = true
+        connection.connectTimeout = 20000
+        connection.readTimeout = 60000
+
+        val contents = JSONArray()
+        history.forEach { msg ->
+            val role = if (msg.role == "user") "user" else "model"
+            if (msg.text.isNotBlank()) {
+                contents.put(JSONObject().apply {
+                    put("role", role)
+                    put("parts", JSONArray().put(JSONObject().apply { put("text", msg.text) }))
+                })
+            }
+        }
+
+        val bodyJson = JSONObject().apply {
+            put("contents", contents)
+            if (systemPrompt.isNotBlank()) {
+                put("systemInstruction", JSONObject().apply {
+                    put("parts", JSONArray().put(JSONObject().apply { put("text", systemPrompt) }))
+                })
+            }
+        }
+        connection.outputStream.use { it.write(bodyJson.toString().toByteArray()) }
+
+        val code = connection.responseCode
+        if (code !in 200..299) {
+            val errText = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            AppLog.add("GEMINI_ERROR", "HTTP $code: ${errText.take(200)}")
+            connection.disconnect()
+            return "Gagal manggil Gemini (HTTP $code). Cek API key atau koneksi internet."
+        }
+
+        val fullText = StringBuilder()
+        connection.inputStream.bufferedReader().use { reader ->
+            reader.forEachLine { line ->
+                if (line.startsWith("data: ")) {
+                    val jsonPart = line.removePrefix("data: ").trim()
+                    if (jsonPart.isNotBlank() && jsonPart != "[DONE]") {
+                        try {
+                            val chunkJson = JSONObject(jsonPart)
+                            val text = chunkJson.optJSONArray("candidates")
+                                ?.optJSONObject(0)?.optJSONObject("content")
+                                ?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")
+                            if (!text.isNullOrEmpty()) {
+                                fullText.append(text)
+                                onChunk(fullText.toString())
+                            }
+                        } catch (e: Exception) { }
+                    }
+                }
+            }
+        }
+        connection.disconnect()
+        AppLog.add("CHAT", "Gemini streaming selesai (${fullText.length} karakter)")
+        return fullText.toString().ifBlank { "Gemini gak ngasih jawaban (response kosong)." }
+    }
+
+    private fun callOpenAiCompatibleStreamingRaw(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        history: List<ChatMessage>,
+        systemPrompt: String,
+        onChunk: (String) -> Unit
+    ): String {
+        val trimmedBase = baseUrl.trimEnd('/')
+        if (trimmedBase.isBlank()) return "Base URL AI belum diisi. Buka Settings buat masukin URL-nya."
+        val url = URL("$trimmedBase/v1/chat/completions")
+        val connection = url.openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.setRequestProperty("Content-Type", "application/json")
+        if (apiKey.isNotBlank()) connection.setRequestProperty("Authorization", "Bearer $apiKey")
+        connection.doOutput = true
+        connection.connectTimeout = 20000
+        connection.readTimeout = 60000
+
+        val messages = JSONArray()
+        if (systemPrompt.isNotBlank()) {
+            messages.put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
+        }
+        history.forEach { msg ->
+            val role = if (msg.role == "user") "user" else "assistant"
+            if (msg.text.isNotBlank()) {
+                messages.put(JSONObject().apply { put("role", role); put("content", msg.text) })
+            }
+        }
+
+        val bodyJson = JSONObject().apply {
+            put("model", model.ifBlank { "default" })
+            put("messages", messages)
+            put("stream", true)
+        }
+        connection.outputStream.use { it.write(bodyJson.toString().toByteArray()) }
+
+        val code = connection.responseCode
+        if (code !in 200..299) {
+            val errText = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            AppLog.add("AI_PROVIDER_ERROR", "HTTP $code: ${errText.take(200)}")
+            connection.disconnect()
+            return "Gagal manggil AI (HTTP $code). Cek API key, model, atau URL-nya."
+        }
+
+        val fullText = StringBuilder()
+        connection.inputStream.bufferedReader().use { reader ->
+            reader.forEachLine { line ->
+                if (line.startsWith("data: ")) {
+                    val jsonPart = line.removePrefix("data: ").trim()
+                    if (jsonPart.isNotBlank() && jsonPart != "[DONE]") {
+                        try {
+                            val chunkJson = JSONObject(jsonPart)
+                            val delta = chunkJson.optJSONArray("choices")
+                                ?.optJSONObject(0)?.optJSONObject("delta")?.optString("content")
+                            if (!delta.isNullOrEmpty()) {
+                                fullText.append(delta)
+                                onChunk(fullText.toString())
+                            }
+                        } catch (e: Exception) { }
+                    }
+                }
+            }
+        }
+        connection.disconnect()
+        AppLog.add("CHAT", "AI streaming selesai (${fullText.length} karakter)")
+        return fullText.toString().ifBlank { "AI gak ngasih jawaban (response kosong)." }
+    }
+
     private fun callProfileWithKeyRotation(profile: AiProfile, history: List<ChatMessage>, systemPrompt: String): String {
         if (profile.apiKeys.isEmpty()) {
             return callOpenAiCompatibleRaw(profile.baseUrl, "", profile.model, history, systemPrompt)

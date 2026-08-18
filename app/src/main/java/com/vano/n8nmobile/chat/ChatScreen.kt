@@ -1,11 +1,14 @@
 package com.vano.n8nmobile.chat
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.speech.RecognizerIntent
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -40,6 +43,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Card
@@ -151,6 +155,68 @@ fun ChatScreen(
             pendingAttachmentName = queryFileName(context, uri) ?: "file"
             pendingImageBase64 = null
             pendingImageBitmap = null
+        }
+    }
+
+    val voiceLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val results = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            val recognized = results?.firstOrNull()
+            if (!recognized.isNullOrBlank()) {
+                input = if (input.isBlank()) recognized else "$input $recognized"
+            }
+        }
+    }
+
+    val voicePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "id-ID")
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "Bicara sekarang...")
+            }
+            try {
+                voiceLauncher.launch(intent)
+            } catch (e: Exception) {
+                AppLog.add("VOICE_ERROR", "Speech recognition gak tersedia: ${e.message}")
+            }
+        }
+    }
+
+    fun sendCurrentInput() {
+        val text = input.trim()
+        if ((text.isEmpty() && pendingImageBase64 == null && pendingAttachmentName == null) || isLoading) return
+        messages.add(
+            ChatMessage(
+                role = "user",
+                text = text,
+                imageBase64 = pendingImageBase64,
+                imageMimeType = if (pendingImageBase64 != null) "image/jpeg" else null,
+                attachmentName = pendingAttachmentName
+            )
+        )
+        input = ""
+        clearPendingAttachment()
+        isLoading = true
+        onMessagesChanged()
+        AppLog.add("CHAT", "User: ${text.take(60)}")
+        scope.launch {
+            val historySnapshot = messages.toList()
+            val aiMessageIndex = messages.size
+            messages.add(ChatMessage(role = "ai", text = ""))
+            var streamed = false
+            val finalReply = AiClient.sendMessageStreaming(context, historySnapshot, chatMode) { partial ->
+                streamed = true
+                if (aiMessageIndex < messages.size) {
+                    messages[aiMessageIndex] = messages[aiMessageIndex].copy(text = partial)
+                }
+            }
+            if (aiMessageIndex < messages.size) {
+                messages[aiMessageIndex] = messages[aiMessageIndex].copy(text = finalReply)
+            }
+            if (streamed) animatedUpTo = aiMessageIndex
+            isLoading = false
+            onMessagesChanged()
         }
     }
 
@@ -267,13 +333,6 @@ fun ChatScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 reverseLayout = true
             ) {
-                if (isLoading) {
-                    item {
-                        Row(modifier = Modifier.padding(12.dp)) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                        }
-                    }
-                }
                 itemsIndexed(messages.reversed()) { reversedIndex, msg ->
                     val originalIndex = messages.size - 1 - reversedIndex
                     val isUser = msg.role == "user"
@@ -308,6 +367,7 @@ fun ChatScreen(
                             Column(modifier = Modifier.padding(14.dp)) {
                                 MessageContent(
                                     msg = msg,
+                                    isLatestAi = !isUser && originalIndex == messages.lastIndex,
                                     animate = shouldAnimate,
                                     onAnimationDone = { animatedUpTo = originalIndex }
                                 )
@@ -374,7 +434,20 @@ fun ChatScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(AiwaColors.Pink)
+                    .clickable { voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Mic, contentDescription = "Bicara", tint = Color.White)
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
 
             OutlinedTextField(
                 value = input,
@@ -392,31 +465,7 @@ fun ChatScreen(
                     .size(44.dp)
                     .clip(CircleShape)
                     .background(AiwaColors.Pink)
-                    .clickable {
-                        val text = input.trim()
-                        if ((text.isEmpty() && pendingImageBase64 == null && pendingAttachmentName == null) || isLoading) return@clickable
-                        messages.add(
-                            ChatMessage(
-                                role = "user",
-                                text = text,
-                                imageBase64 = pendingImageBase64,
-                                imageMimeType = if (pendingImageBase64 != null) "image/jpeg" else null,
-                                attachmentName = pendingAttachmentName
-                            )
-                        )
-                        input = ""
-                        clearPendingAttachment()
-                        isLoading = true
-                        onMessagesChanged()
-                        AppLog.add("CHAT", "User: ${text.take(60)}")
-                        scope.launch {
-                            val historySnapshot = messages.toList()
-                            val reply = AiClient.sendMessageWithMode(context, historySnapshot, chatMode)
-                            messages.add(ChatMessage(role = "ai", text = reply))
-                            isLoading = false
-                            onMessagesChanged()
-                        }
-                    },
+                    .clickable { sendCurrentInput() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Color.White)
@@ -426,7 +475,12 @@ fun ChatScreen(
 }
 
 @Composable
-private fun MessageContent(msg: ChatMessage, animate: Boolean = false, onAnimationDone: () -> Unit = {}) {
+private fun MessageContent(
+    msg: ChatMessage,
+    isLatestAi: Boolean = false,
+    animate: Boolean = false,
+    onAnimationDone: () -> Unit = {}
+) {
     msg.imageBase64?.let { b64 ->
         val bitmap = remember(b64) { decodeBase64ToBitmap(b64) }
         bitmap?.let {
@@ -439,7 +493,9 @@ private fun MessageContent(msg: ChatMessage, animate: Boolean = false, onAnimati
         Spacer(modifier = Modifier.height(4.dp))
     }
 
-    if (msg.text.isNotBlank()) {
+    if (msg.role != "user" && msg.text.isBlank() && isLatestAi) {
+        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White)
+    } else if (msg.text.isNotBlank()) {
         val (thinking, mainText) = remember(msg.text) { extractThinking(msg.text) }
 
         thinking?.let { ThinkingBlock(it) }
