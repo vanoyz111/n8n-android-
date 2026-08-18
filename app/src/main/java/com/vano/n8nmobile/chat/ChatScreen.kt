@@ -43,8 +43,10 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -74,6 +76,8 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -220,6 +224,38 @@ fun ChatScreen(
         }
     }
 
+    fun regenerateMessage(index: Int) {
+        if (isLoading) return
+        val msg = messages.getOrNull(index) ?: return
+        if (msg.role == "user") return
+        while (messages.size > index) messages.removeAt(messages.size - 1)
+        isLoading = true
+        onMessagesChanged()
+        scope.launch {
+            val historySnapshot = messages.toList()
+            val aiIndex = messages.size
+            messages.add(ChatMessage(role = "ai", text = ""))
+            var streamed = false
+            val finalReply = AiClient.sendMessageStreaming(context, historySnapshot, chatMode) { partial ->
+                streamed = true
+                if (aiIndex < messages.size) messages[aiIndex] = messages[aiIndex].copy(text = partial)
+            }
+            if (aiIndex < messages.size) messages[aiIndex] = messages[aiIndex].copy(text = finalReply)
+            if (streamed) animatedUpTo = aiIndex
+            isLoading = false
+            onMessagesChanged()
+        }
+    }
+
+    fun startEditMessage(index: Int) {
+        if (isLoading) return
+        val msg = messages.getOrNull(index) ?: return
+        if (msg.role != "user") return
+        input = msg.text
+        while (messages.size > index) messages.removeAt(messages.size - 1)
+        onMessagesChanged()
+    }
+
     Column(
         modifier = Modifier.fillMaxSize().systemBarsPadding().imePadding()
     ) {
@@ -337,40 +373,71 @@ fun ChatScreen(
                     val originalIndex = messages.size - 1 - reversedIndex
                     val isUser = msg.role == "user"
                     val shouldAnimate = !isUser && originalIndex == messages.lastIndex && originalIndex > animatedUpTo
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
-                        verticalAlignment = Alignment.Top
+                        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
                     ) {
-                        if (!isUser) {
-                            Image(
-                                painter = painterResource(id = R.mipmap.ic_launcher),
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .padding(top = 2.dp)
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                            border = BorderStroke(1.5.dp, AiwaColors.Pink),
-                            shape = RoundedCornerShape(20.dp),
-                            modifier = Modifier
-                                .widthIn(max = 280.dp)
-                                .background(
-                                    if (isUser) SolidColor(AiwaColors.Pink) else AiwaBubbleGradient,
-                                    RoundedCornerShape(20.dp)
-                                )
+                        Row(
+                            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+                            verticalAlignment = Alignment.Top
                         ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                MessageContent(
-                                    msg = msg,
-                                    isLatestAi = !isUser && originalIndex == messages.lastIndex,
-                                    animate = shouldAnimate,
-                                    onAnimationDone = { animatedUpTo = originalIndex }
+                            if (!isUser) {
+                                Image(
+                                    painter = painterResource(id = R.mipmap.ic_launcher),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .padding(top = 2.dp)
+                                        .size(28.dp)
+                                        .clip(CircleShape)
                                 )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                                border = BorderStroke(1.5.dp, AiwaColors.Pink),
+                                shape = RoundedCornerShape(20.dp),
+                                modifier = Modifier
+                                    .widthIn(max = 280.dp)
+                                    .background(
+                                        if (isUser) SolidColor(AiwaColors.Pink) else AiwaBubbleGradient,
+                                        RoundedCornerShape(20.dp)
+                                    )
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    MessageContent(
+                                        msg = msg,
+                                        isLatestAi = !isUser && originalIndex == messages.lastIndex,
+                                        animate = shouldAnimate,
+                                        onAnimationDone = { animatedUpTo = originalIndex }
+                                    )
+                                }
+                            }
+                        }
+                        if (!isLoading) {
+                            Row(
+                                modifier = Modifier.padding(top = 2.dp, start = if (!isUser) 36.dp else 0.dp)
+                            ) {
+                                if (isUser) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .clip(CircleShape)
+                                            .clickable { startEditMessage(originalIndex) },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = AiwaColors.Pink, modifier = Modifier.size(16.dp))
+                                    }
+                                } else if (msg.text.isNotBlank()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .clip(CircleShape)
+                                            .clickable { regenerateMessage(originalIndex) },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = "Regenerate", tint = AiwaColors.Pink, modifier = Modifier.size(16.dp))
+                                    }
+                                }
                             }
                         }
                     }
@@ -550,8 +617,78 @@ private fun RenderMessageBody(text: String) {
             if (seg.isCode) {
                 CodeBlock(seg.content, seg.language)
             } else if (seg.content.isNotBlank()) {
-                Text(seg.content.trim('\n'), color = Color.White)
+                MarkdownText(seg.content.trim('\n'), Color.White)
             }
+        }
+    }
+}
+
+@Composable
+private fun MarkdownText(text: String, color: Color) {
+    Column {
+        text.split("\n").forEach { line ->
+            when {
+                line.startsWith("### ") -> Text(buildInlineAnnotated(line.removePrefix("### "), color), color = color, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                line.startsWith("## ") -> Text(buildInlineAnnotated(line.removePrefix("## "), color), color = color, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                line.startsWith("# ") -> Text(buildInlineAnnotated(line.removePrefix("# "), color), color = color, fontWeight = FontWeight.Bold, fontSize = 19.sp)
+                line.trimStart().startsWith("- ") -> Row {
+                    Text("•  ", color = color)
+                    Text(buildInlineAnnotated(line.trimStart().removePrefix("- "), color), color = color)
+                }
+                line.trimStart().startsWith("* ") -> Row {
+                    Text("•  ", color = color)
+                    Text(buildInlineAnnotated(line.trimStart().removePrefix("* "), color), color = color)
+                }
+                Regex("^\\d+\\.\\s").containsMatchIn(line.trimStart()) -> {
+                    Text(buildInlineAnnotated(line.trimStart(), color), color = color)
+                }
+                line.isBlank() -> Spacer(modifier = Modifier.height(6.dp))
+                else -> Text(buildInlineAnnotated(line, color), color = color)
+            }
+        }
+    }
+}
+
+private fun buildInlineAnnotated(line: String, baseColor: Color): AnnotatedString {
+    return buildAnnotatedString {
+        val pattern = Regex("(\\*\\*[^*]+?\\*\\*|__[^_]+?__|`[^`]+?`|\\*[^*]+?\\*|_[^_]+?_)")
+        var lastIndex = 0
+        pattern.findAll(line).forEach { match ->
+            if (match.range.first > lastIndex) {
+                append(line.substring(lastIndex, match.range.first))
+            }
+            val token = match.value
+            when {
+                token.startsWith("**") -> {
+                    pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
+                    append(token.removePrefix("**").removeSuffix("**"))
+                    pop()
+                }
+                token.startsWith("__") -> {
+                    pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
+                    append(token.removePrefix("__").removeSuffix("__"))
+                    pop()
+                }
+                token.startsWith("`") -> {
+                    pushStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = Color.White.copy(alpha = 0.15f)))
+                    append(token.removePrefix("`").removeSuffix("`"))
+                    pop()
+                }
+                token.startsWith("*") -> {
+                    pushStyle(SpanStyle(fontStyle = FontStyle.Italic))
+                    append(token.removePrefix("*").removeSuffix("*"))
+                    pop()
+                }
+                token.startsWith("_") -> {
+                    pushStyle(SpanStyle(fontStyle = FontStyle.Italic))
+                    append(token.removePrefix("_").removeSuffix("_"))
+                    pop()
+                }
+            }
+            lastIndex = match.range.last + 1
+        }
+        if (lastIndex < line.length) {
+            append(line.substring(lastIndex))
         }
     }
 }

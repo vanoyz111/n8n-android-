@@ -18,17 +18,26 @@ class FlowAlarmReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                AppLog.add("SCHEDULE", "Menjalankan flow terjadwal...")
-                val flowState = FlowStore.load(context)
-                val nodes = flowState.nodes.map {
-                    WorkflowNode(id = it.id, type = it.type, config = FlowScheduler.parseConfig(it.configText))
+                val flowId = FlowScheduler.getScheduledFlowId(context)
+                val flowState = flowId?.let { FlowStore.loadFlow(context, it) }
+                if (flowState == null) {
+                    AppLog.add("SCHEDULE", "Gak ada flow terjadwal yang aktif")
+                } else {
+                    AppLog.add("SCHEDULE", "Menjalankan flow terjadwal: ${flowState.name}")
+                    val nodes = flowState.nodes.map {
+                        WorkflowNode(id = it.id, type = it.type, config = FlowScheduler.parseConfig(it.configText))
+                    }
+                    val edges = flowState.edges.map { WorkflowEdge(it.fromId, it.toId) }
+                    val workflow = Workflow(nodes, edges)
+                    val registry = NodeRegistry.default(context)
+                    val engine = WorkflowExecutionEngine(registry)
+                    val result = engine.run(workflow)
+                    if (result.fatalError != null) {
+                        AppLog.add("SCHEDULE_ERROR", result.fatalError)
+                    } else {
+                        AppLog.add("SCHEDULE", "Flow terjadwal selesai")
+                    }
                 }
-                val edges = flowState.edges.map { WorkflowEdge(it.fromId, it.toId) }
-                val workflow = Workflow(nodes, edges)
-                val registry = NodeRegistry.default(context)
-                val engine = WorkflowExecutionEngine(registry)
-                engine.run(workflow)
-                AppLog.add("SCHEDULE", "Flow terjadwal selesai")
             } catch (e: Exception) {
                 AppLog.add("SCHEDULE_ERROR", e.message ?: "unknown")
             } finally {

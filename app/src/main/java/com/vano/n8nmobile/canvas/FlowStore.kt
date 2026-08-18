@@ -4,60 +4,72 @@ import android.content.Context
 import androidx.compose.ui.geometry.Offset
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
+
+data class FlowSummary(val id: String, val name: String, val updatedAt: Long)
 
 object FlowStore {
     private const val PREFS_NAME = "n8n_mobile_flow"
-    private const val KEY_NODES = "nodes"
-    private const val KEY_EDGES = "edges"
-    private const val KEY_POSITIONS = "positions"
-    private const val KEY_NEXT_ID = "next_id"
+    private const val KEY_FLOW_IDS = "flow_ids"
+    private const val KEY_FLOW_PREFIX = "flow_"
 
     data class FlowState(
         val nodes: List<CanvasNode>,
         val edges: List<CanvasEdge>,
         val positions: Map<String, Offset>,
-        val nextId: Int
+        val nextId: Int,
+        val name: String
     )
 
-    fun load(context: Context): FlowState {
+    fun newId(): String = UUID.randomUUID().toString()
+
+    fun listFlows(context: Context): List<FlowSummary> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val idsRaw = prefs.getString(KEY_FLOW_IDS, null) ?: return emptyList()
+        return try {
+            val ids = JSONArray(idsRaw)
+            (0 until ids.length()).mapNotNull { i ->
+                val id = ids.getString(i)
+                val raw = prefs.getString("$KEY_FLOW_PREFIX$id", null) ?: return@mapNotNull null
+                val obj = JSONObject(raw)
+                FlowSummary(id, obj.optString("name", "Flow"), obj.optLong("updatedAt", 0L))
+            }.sortedByDescending { it.updatedAt }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
 
-        val nodes = try {
-            val array = JSONArray(prefs.getString(KEY_NODES, "[]"))
-            (0 until array.length()).map { i ->
-                val obj = array.getJSONObject(i)
-                CanvasNode(
-                    id = obj.getString("id"),
-                    type = obj.getString("type"),
-                    configText = obj.optString("configText", "")
-                )
+    fun loadFlow(context: Context, id: String): FlowState? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val raw = prefs.getString("$KEY_FLOW_PREFIX$id", null) ?: return null
+        return try {
+            val obj = JSONObject(raw)
+            val nodesArr = obj.getJSONArray("nodes")
+            val nodes = (0 until nodesArr.length()).map { i ->
+                val n = nodesArr.getJSONObject(i)
+                CanvasNode(n.getString("id"), n.getString("type"), n.optString("configText", ""))
             }
-        } catch (e: Exception) { emptyList() }
-
-        val edges = try {
-            val array = JSONArray(prefs.getString(KEY_EDGES, "[]"))
-            (0 until array.length()).map { i ->
-                val obj = array.getJSONObject(i)
-                CanvasEdge(fromId = obj.getString("fromId"), toId = obj.getString("toId"))
+            val edgesArr = obj.getJSONArray("edges")
+            val edges = (0 until edgesArr.length()).map { i ->
+                val e = edgesArr.getJSONObject(i)
+                CanvasEdge(e.getString("fromId"), e.getString("toId"))
             }
-        } catch (e: Exception) { emptyList() }
-
-        val positions = try {
-            val obj = JSONObject(prefs.getString(KEY_POSITIONS, "{}"))
-            val map = mutableMapOf<String, Offset>()
-            obj.keys().forEach { key ->
-                val posObj = obj.getJSONObject(key)
-                map[key] = Offset(posObj.getDouble("x").toFloat(), posObj.getDouble("y").toFloat())
+            val posObj = obj.getJSONObject("positions")
+            val positions = mutableMapOf<String, Offset>()
+            posObj.keys().forEach { key ->
+                val p = posObj.getJSONObject(key)
+                positions[key] = Offset(p.getDouble("x").toFloat(), p.getDouble("y").toFloat())
             }
-            map
-        } catch (e: Exception) { emptyMap() }
-
-        val nextId = prefs.getInt(KEY_NEXT_ID, 1)
-        return FlowState(nodes, edges, positions, nextId)
+            FlowState(nodes, edges, positions, obj.optInt("nextId", 1), obj.optString("name", "Flow"))
+        } catch (e: Exception) {
+            null
+        }
     }
 
     fun save(
         context: Context,
+        id: String,
+        name: String,
         nodes: List<CanvasNode>,
         edges: List<CanvasEdge>,
         positions: Map<String, Offset>,
@@ -68,33 +80,39 @@ object FlowStore {
         val nodesArray = JSONArray()
         nodes.forEach { n ->
             nodesArray.put(JSONObject().apply {
-                put("id", n.id)
-                put("type", n.type)
-                put("configText", n.configText)
+                put("id", n.id); put("type", n.type); put("configText", n.configText)
             })
         }
-
         val edgesArray = JSONArray()
         edges.forEach { e ->
-            edgesArray.put(JSONObject().apply {
-                put("fromId", e.fromId)
-                put("toId", e.toId)
-            })
+            edgesArray.put(JSONObject().apply { put("fromId", e.fromId); put("toId", e.toId) })
         }
-
         val positionsObj = JSONObject()
-        positions.forEach { (id, offset) ->
-            positionsObj.put(id, JSONObject().apply {
-                put("x", offset.x.toDouble())
-                put("y", offset.y.toDouble())
+        positions.forEach { (pid, offset) ->
+            positionsObj.put(pid, JSONObject().apply {
+                put("x", offset.x.toDouble()); put("y", offset.y.toDouble())
             })
         }
 
-        prefs.edit()
-            .putString(KEY_NODES, nodesArray.toString())
-            .putString(KEY_EDGES, edgesArray.toString())
-            .putString(KEY_POSITIONS, positionsObj.toString())
-            .putInt(KEY_NEXT_ID, nextId)
-            .apply()
+        val flowObj = JSONObject().apply {
+            put("name", name)
+            put("nodes", nodesArray)
+            put("edges", edgesArray)
+            put("positions", positionsObj)
+            put("nextId", nextId)
+            put("updatedAt", System.currentTimeMillis())
+        }
+        prefs.edit().putString("$KEY_FLOW_PREFIX$id", flowObj.toString()).apply()
+
+        val existingIds = listFlows(context).map { it.id }.toMutableSet()
+        existingIds.add(id)
+        prefs.edit().putString(KEY_FLOW_IDS, JSONArray(existingIds.toList()).toString()).apply()
+    }
+
+    fun delete(context: Context, id: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().remove("$KEY_FLOW_PREFIX$id").apply()
+        val remainingIds = listFlows(context).map { it.id }.filterNot { it == id }
+        prefs.edit().putString(KEY_FLOW_IDS, JSONArray(remainingIds).toString()).apply()
     }
 }

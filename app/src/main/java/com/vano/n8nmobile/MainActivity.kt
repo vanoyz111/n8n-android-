@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Surface
@@ -130,11 +131,6 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
-            val savedFlow = remember { FlowStore.load(context) }
-            val flowNodes = remember { mutableStateListOf<CanvasNode>().apply { addAll(savedFlow.nodes) } }
-            val flowEdges = remember { mutableStateListOf<CanvasEdge>().apply { addAll(savedFlow.edges) } }
-            val flowPositions = remember { mutableStateMapOf<String, Offset>().apply { putAll(savedFlow.positions) } }
-            val flowNextId = remember { mutableStateOf(savedFlow.nextId) }
 
             MaterialTheme(colorScheme = colors) {
                 if (!isUnlocked) {
@@ -146,6 +142,7 @@ class MainActivity : FragmentActivity() {
                     val drawerState = rememberDrawerState(DrawerValue.Closed)
                     val scope = rememberCoroutineScope()
                     var conversationsList by remember { mutableStateOf(ChatStore.loadAll(context)) }
+                    var chatSearchQuery by remember { mutableStateOf("") }
 
                     ModalNavigationDrawer(
                         drawerState = drawerState,
@@ -203,6 +200,15 @@ class MainActivity : FragmentActivity() {
                                     )
                                     Spacer(modifier = Modifier.height(8.dp))
 
+                                    OutlinedTextField(
+                                        value = chatSearchQuery,
+                                        onValueChange = { chatSearchQuery = it },
+                                        placeholder = { Text("Cari percakapan...") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -211,13 +217,24 @@ class MainActivity : FragmentActivity() {
                                             .background(AiwaColors.PanelBlack)
                                             .padding(12.dp)
                                     ) {
+                                        val filteredConversations = if (chatSearchQuery.isBlank()) {
+                                            conversationsList
+                                        } else {
+                                            conversationsList.filter { conv ->
+                                                conv.title.contains(chatSearchQuery, ignoreCase = true) ||
+                                                    conv.messages.any { it.text.contains(chatSearchQuery, ignoreCase = true) }
+                                            }
+                                        }
                                         Column(
                                             verticalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
-                                            if (conversationsList.isEmpty()) {
-                                                Text("Belum ada riwayat", color = Color.White.copy(alpha = 0.6f))
+                                            if (filteredConversations.isEmpty()) {
+                                                Text(
+                                                    if (chatSearchQuery.isBlank()) "Belum ada riwayat" else "Gak ketemu",
+                                                    color = Color.White.copy(alpha = 0.6f)
+                                                )
                                             } else {
-                                                conversationsList.forEach { conv ->
+                                                filteredConversations.forEach { conv ->
                                                     Row(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
@@ -292,11 +309,7 @@ class MainActivity : FragmentActivity() {
                                 onOpenAiProviders = { currentScreen = AppScreen.AI_PROVIDERS }
                             )
                             AppScreen.FLOW -> WorkflowCanvasScreen(
-                                onOpenDrawer = { scope.launch { drawerState.open() } },
-                                nodes = flowNodes,
-                                edges = flowEdges,
-                                positions = flowPositions,
-                                nextIdState = flowNextId
+                                onOpenDrawer = { scope.launch { drawerState.open() } }
                             )
                             AppScreen.SETTINGS -> SettingsScreen(
                                 onOpenDrawer = { scope.launch { drawerState.open() } },

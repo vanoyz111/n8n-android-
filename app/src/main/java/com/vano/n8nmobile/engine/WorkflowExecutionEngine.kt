@@ -2,11 +2,32 @@ package com.vano.n8nmobile.engine
 
 import com.vano.n8nmobile.model.Workflow
 
+data class NodeExecutionLog(
+    val nodeId: String,
+    val nodeType: String,
+    val durationMs: Long,
+    val success: Boolean,
+    val errorMessage: String? = null,
+    val outputSummary: String = ""
+)
+
+data class ExecutionResult(
+    val outputs: Map<String, List<Map<String, Any?>>>,
+    val log: List<NodeExecutionLog>,
+    val fatalError: String? = null
+)
+
 class WorkflowExecutionEngine(private val registry: NodeRegistry) {
 
-    suspend fun run(workflow: Workflow): Map<String, List<Map<String, Any?>>> {
-        val order = topologicalSort(workflow)
+    suspend fun run(workflow: Workflow): ExecutionResult {
+        val order = try {
+            topologicalSort(workflow)
+        } catch (e: Exception) {
+            return ExecutionResult(emptyMap(), emptyList(), e.message ?: "Gagal urutan eksekusi")
+        }
+
         val outputs = mutableMapOf<String, List<Map<String, Any?>>>()
+        val log = mutableListOf<NodeExecutionLog>()
 
         for (nodeId in order) {
             val node = workflow.nodes.first { it.id == nodeId }
@@ -17,10 +38,27 @@ class WorkflowExecutionEngine(private val registry: NodeRegistry) {
                 incomingEdges.flatMap { outputs[it.fromNodeId] ?: emptyList() }
             }
             val executor = registry.get(node.type)
-                ?: throw IllegalStateException("Node type tidak dikenal: ${node.type}")
-            outputs[node.id] = executor.execute(node, input)
+            val startTime = System.currentTimeMillis()
+
+            if (executor == null) {
+                val duration = System.currentTimeMillis() - startTime
+                val message = "Node type tidak dikenal: ${node.type}"
+                log.add(NodeExecutionLog(node.id, node.type, duration, false, message))
+                return ExecutionResult(outputs, log, message)
+            }
+
+            try {
+                val result = executor.execute(node, input)
+                outputs[node.id] = result
+                val duration = System.currentTimeMillis() - startTime
+                log.add(NodeExecutionLog(node.id, node.type, duration, true, null, result.toString().take(150)))
+            } catch (e: Exception) {
+                val duration = System.currentTimeMillis() - startTime
+                log.add(NodeExecutionLog(node.id, node.type, duration, false, e.message ?: "Error tidak diketahui"))
+                return ExecutionResult(outputs, log, e.message ?: "Error tidak diketahui saat menjalankan node ${node.type}")
+            }
         }
-        return outputs
+        return ExecutionResult(outputs, log, null)
     }
 
     private fun topologicalSort(workflow: Workflow): List<String> {
