@@ -197,6 +197,16 @@ fun WorkflowCanvasScreen(onOpenDrawer: () -> Unit) {
                         }
                     )
                     DropdownMenuItem(
+                        text = { Text("Duplikat Flow Ini") },
+                        onClick = {
+                            val newId = FlowStore.newId()
+                            FlowStore.save(context, newId, "$flowName (salinan)", nodes.toList(), edges.toList(), positions.toMap(), nextId)
+                            flowsList = FlowStore.listFlows(context)
+                            loadFlow(newId)
+                            showFlowMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
                         text = { Text("Ganti Nama") },
                         onClick = {
                             showFlowMenu = false

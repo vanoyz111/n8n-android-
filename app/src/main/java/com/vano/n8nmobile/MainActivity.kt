@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
@@ -76,6 +77,7 @@ import com.vano.n8nmobile.security.AppLockScreen
 import com.vano.n8nmobile.security.AppLockSettingsScreen
 import com.vano.n8nmobile.security.AppLockStore
 import com.vano.n8nmobile.backup.BackupRestoreScreen
+import com.vano.n8nmobile.health.HealthDashboardScreen
 import com.vano.n8nmobile.canvas.FlowScheduler
 import com.vano.n8nmobile.server.HealthCheckScheduler
 import com.vano.n8nmobile.settings.SettingsScreen
@@ -89,7 +91,7 @@ import com.vano.n8nmobile.ui.AiwaThemeStore
 import com.vano.n8nmobile.ui.ThemeCustomizationScreen
 import kotlinx.coroutines.launch
 
-private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN, AI_PROVIDERS, LOCAL_SERVER, APP_LOCK, BACKUP }
+private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN, AI_PROVIDERS, LOCAL_SERVER, APP_LOCK, BACKUP, HEALTH_DASHBOARD }
 
 class MainActivity : FragmentActivity() {
 
@@ -264,6 +266,29 @@ class MainActivity : FragmentActivity() {
                                                                 .clip(CircleShape)
                                                                 .background(AiwaColors.Pink)
                                                                 .clickable {
+                                                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                                        type = "text/plain"
+                                                                        putExtra(Intent.EXTRA_TEXT, ChatStore.exportAsText(conv))
+                                                                        putExtra(Intent.EXTRA_SUBJECT, conv.title)
+                                                                    }
+                                                                    context.startActivity(Intent.createChooser(shareIntent, "Export Percakapan"))
+                                                                },
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Icon(
+                                                                Icons.Default.Share,
+                                                                contentDescription = "Export",
+                                                                tint = Color.White,
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                        }
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(26.dp)
+                                                                .clip(CircleShape)
+                                                                .background(AiwaColors.Pink)
+                                                                .clickable {
                                                                     ChatStore.delete(context, conv.id)
                                                                     conversationsList = ChatStore.loadAll(context)
                                                                     if (conv.id == currentConversationId) {
@@ -321,7 +346,11 @@ class MainActivity : FragmentActivity() {
                                 onOpenAiProviders = { currentScreen = AppScreen.AI_PROVIDERS },
                                 onOpenLocalServer = { currentScreen = AppScreen.LOCAL_SERVER },
                                 onOpenAppLock = { currentScreen = AppScreen.APP_LOCK },
-                                onOpenBackup = { currentScreen = AppScreen.BACKUP }
+                                onOpenBackup = { currentScreen = AppScreen.BACKUP },
+                                onOpenHealthDashboard = { currentScreen = AppScreen.HEALTH_DASHBOARD }
+                            )
+                            AppScreen.HEALTH_DASHBOARD -> HealthDashboardScreen(
+                                onBack = { currentScreen = AppScreen.SETTINGS }
                             )
                             AppScreen.APP_LOCK -> AppLockSettingsScreen(
                                 onBack = { currentScreen = AppScreen.SETTINGS }

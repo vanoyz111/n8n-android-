@@ -1,9 +1,13 @@
 package com.vano.n8nmobile.chat
 
+data class ImageAttachment(
+    val base64: String,
+    val mimeType: String
+)
+
 data class ChatMessage(
     val role: String,
     val text: String,
-    val imageBase64: String? = null,
-    val imageMimeType: String? = null,
-    val attachmentName: String? = null
+    val imageAttachments: List<ImageAttachment> = emptyList(),
+    val fileAttachmentNames: List<String> = emptyList()
 )

@@ -9,23 +9,23 @@ object LocalServerStore {
     private const val KEY_RUNNING = "running"
 
     fun getPort(context: Context): Int =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getInt(KEY_PORT, 8080)
+        com.vano.n8nmobile.security.SecurePrefs.get(context, PREFS_NAME).getInt(KEY_PORT, 8080)
 
     fun setPort(context: Context, port: Int) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putInt(KEY_PORT, port).apply()
+        com.vano.n8nmobile.security.SecurePrefs.get(context, PREFS_NAME).edit().putInt(KEY_PORT, port).apply()
     }
 
     fun getApiKey(context: Context): String =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_API_KEY, "") ?: ""
+        com.vano.n8nmobile.security.SecurePrefs.get(context, PREFS_NAME).getString(KEY_API_KEY, "") ?: ""
 
     fun setApiKey(context: Context, key: String) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_API_KEY, key).apply()
+        com.vano.n8nmobile.security.SecurePrefs.get(context, PREFS_NAME).edit().putString(KEY_API_KEY, key).apply()
     }
 
     fun isRunning(context: Context): Boolean =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_RUNNING, false)
+        com.vano.n8nmobile.security.SecurePrefs.get(context, PREFS_NAME).getBoolean(KEY_RUNNING, false)
 
     fun setRunning(context: Context, running: Boolean) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putBoolean(KEY_RUNNING, running).apply()
+        com.vano.n8nmobile.security.SecurePrefs.get(context, PREFS_NAME).edit().putBoolean(KEY_RUNNING, running).apply()
     }
 }

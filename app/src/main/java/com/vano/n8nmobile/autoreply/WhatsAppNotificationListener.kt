@@ -99,6 +99,11 @@ class WhatsAppNotificationListener : NotificationListenerService() {
             return
         }
 
+        if (AutoReplyStore.isBusinessHoursEnabled(applicationContext) && !isWithinBusinessHours()) {
+            AppLog.add("AUTOREPLY", "Dilewati: di luar jam kerja")
+            return
+        }
+
         if (messageText.isBlank()) return
 
         val replyAction = notification.actions?.firstOrNull { action ->
@@ -168,6 +173,13 @@ class WhatsAppNotificationListener : NotificationListenerService() {
             AppLog.add("AUTOREPLY", "Gak ada keyword cocok, AI fallback mati. Dilewati.")
             releaseSender(sender, applyCooldown = false)
         }
+    }
+
+    private fun isWithinBusinessHours(): Boolean {
+        val start = AutoReplyStore.getBusinessHoursStart(applicationContext)
+        val end = AutoReplyStore.getBusinessHoursEnd(applicationContext)
+        val currentHour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        return if (start <= end) currentHour in start until end else currentHour >= start || currentHour < end
     }
 
     private fun isSenderAllowed(sender: String): Boolean {

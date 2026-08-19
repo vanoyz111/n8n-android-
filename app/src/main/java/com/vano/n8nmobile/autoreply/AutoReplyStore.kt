@@ -15,6 +15,9 @@ object AutoReplyStore {
     private const val KEY_GROUP_ENABLED = "group_enabled"
     private const val KEY_CONTACT_LIST = "contact_list"
     private const val KEY_AI_MODE = "ai_mode"
+        private const val KEY_BH_ENABLED = "business_hours_enabled"
+        private const val KEY_BH_START = "business_hours_start"
+        private const val KEY_BH_END = "business_hours_end"
 
     fun newId(): String = UUID.randomUUID().toString()
 
@@ -92,6 +95,15 @@ object AutoReplyStore {
         contacts.forEach { array.put(it) }
         prefs(context).edit().putString(KEY_CONTACT_LIST, array.toString()).apply()
     }
+
+    fun isBusinessHoursEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_BH_ENABLED, false)
+    fun setBusinessHoursEnabled(context: Context, v: Boolean) { prefs(context).edit().putBoolean(KEY_BH_ENABLED, v).apply() }
+
+    fun getBusinessHoursStart(context: Context): Int = prefs(context).getInt(KEY_BH_START, 9)
+    fun setBusinessHoursStart(context: Context, v: Int) { prefs(context).edit().putInt(KEY_BH_START, v).apply() }
+
+    fun getBusinessHoursEnd(context: Context): Int = prefs(context).getInt(KEY_BH_END, 17)
+    fun setBusinessHoursEnd(context: Context, v: Int) { prefs(context).edit().putInt(KEY_BH_END, v).apply() }
 
     // "auto", "local_gguf", "local_litert", "online"
     fun getAiMode(context: Context): String = prefs(context).getString(KEY_AI_MODE, "auto") ?: "auto"

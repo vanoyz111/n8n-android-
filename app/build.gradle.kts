@@ -48,5 +48,6 @@ dependencies {
     implementation("com.google.ai.edge.litertlm:litertlm-android:latest.release")
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("androidx.fragment:fragment-ktx:1.8.5")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

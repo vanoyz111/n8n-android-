@@ -30,6 +30,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import com.vano.n8nmobile.chat.AiClient
+import com.vano.n8nmobile.chat.QuotaTracker
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -38,6 +42,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun AiProvidersScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var profiles by remember { mutableStateOf(AiProfileStore.getProfiles(context)) }
     var showAddDialog by remember { mutableStateOf(false) }
     var prefillOpenRouter by remember { mutableStateOf(false) }
@@ -121,10 +126,24 @@ fun AiProvidersScreen(onBack: () -> Unit) {
                                 ) {
                                     Text(profile.name, style = MaterialTheme.typography.bodyMedium)
                                     Text(
-                                        "${profile.model.ifBlank { "(model belum diisi)" }} · ${profile.apiKeys.size} key",
+                                        "${profile.model.ifBlank { "(model belum diisi)" }} · ${profile.apiKeys.size} key · ${QuotaTracker.getTodayCount(context, "profile:${profile.id}")}x hari ini",
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 }
+                                var testStatus by remember(profile.id) { mutableStateOf<String?>(null) }
+                                Text(
+                                    text = testStatus ?: "Test",
+                                    modifier = Modifier
+                                        .padding(end = 4.dp)
+                                        .clickable {
+                                            testStatus = "..."
+                                            scope.launch {
+                                                val ok = AiClient.testConnection("openai_compatible", profile.baseUrl, profile.apiKeys.firstOrNull() ?: "", profile.model)
+                                                testStatus = if (ok) "✅" else "❌"
+                                            }
+                                        },
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                                 IconButton(onClick = {
                                     val updated = profiles.filterNot { it.id == profile.id }
                                     profiles = updated

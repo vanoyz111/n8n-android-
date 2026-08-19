@@ -3,7 +3,7 @@ package com.vano.n8nmobile.settings
 import android.content.Context
 
 class SettingsStore(context: Context) {
-    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs = com.vano.n8nmobile.security.SecurePrefs.get(context, PREFS_NAME)
 
     var aiProvider: String
         get() = prefs.getString(KEY_PROVIDER, "gemini") ?: "gemini"

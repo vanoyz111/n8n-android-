@@ -38,6 +38,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.vano.n8nmobile.logging.AppLog
+import com.vano.n8nmobile.chat.AiClient
+import com.vano.n8nmobile.chat.QuotaTracker
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
@@ -50,10 +54,13 @@ fun SettingsScreen(
     onOpenAiProviders: () -> Unit,
     onOpenLocalServer: () -> Unit,
     onOpenAppLock: () -> Unit,
-    onOpenBackup: () -> Unit
+    onOpenBackup: () -> Unit,
+    onOpenHealthDashboard: () -> Unit
 ) {
     val context = LocalContext.current
     val store = remember { SettingsStore(context) }
+    val scope = rememberCoroutineScope()
+    var testStatus by remember { mutableStateOf<String?>(null) }
 
     var provider by remember { mutableStateOf(store.aiProvider) }
     var geminiKey by remember { mutableStateOf(store.geminiApiKey) }
@@ -188,6 +195,27 @@ fun SettingsScreen(
             Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
         }
 
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Button(onClick = {
+                testStatus = "Menguji..."
+                scope.launch {
+                    val ok = if (provider == "gemini") {
+                        AiClient.testConnection("gemini", "", geminiKey, geminiModel)
+                    } else {
+                        AiClient.testConnection("openai_compatible", customUrl, customKey, customModel)
+                    }
+                    testStatus = if (ok) "✅ Berhasil" else "❌ Gagal"
+                }
+            }) { Text("Test Koneksi") }
+            Spacer(modifier = Modifier.width(8.dp))
+            testStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        }
+        Text(
+            "Dipakai hari ini: ${QuotaTracker.getTodayCount(context, if (provider == "gemini") "gemini" else "custom_primary")}x",
+            style = MaterialTheme.typography.bodySmall
+        )
+
         Spacer(modifier = Modifier.height(24.dp))
         HorizontalDivider()
         Spacer(modifier = Modifier.height(16.dp))
@@ -215,6 +243,11 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = onOpenAppLock) {
             Text("Kunci App (PIN / Sidik Jari)")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = onOpenHealthDashboard) {
+            Text("Cek Kesehatan Background")
         }
 
         Spacer(modifier = Modifier.height(24.dp))

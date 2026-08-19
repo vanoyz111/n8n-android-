@@ -9,6 +9,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.speech.RecognizerIntent
+import android.speech.tts.TextToSpeech
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -48,6 +50,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -60,6 +63,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -95,6 +99,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.Locale
 
 @Composable
 fun ChatScreen(
@@ -114,28 +119,28 @@ fun ChatScreen(
     var modeMenuExpanded by remember { mutableStateOf(false) }
     var animatedUpTo by remember { mutableStateOf(messages.size - 1) }
 
-    var pendingImageBase64 by remember { mutableStateOf<String?>(null) }
-    var pendingImageBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var pendingAttachmentName by remember { mutableStateOf<String?>(null) }
+    val ttsRef = remember { mutableStateOf<TextToSpeech?>(null) }
+    DisposableEffect(Unit) {
+        val instance = TextToSpeech(context) { }
+        ttsRef.value = instance
+        onDispose { instance.stop(); instance.shutdown() }
+    }
+
+    var pendingImages by remember { mutableStateOf<List<Pair<String, Bitmap>>>(emptyList()) }
+    var pendingFiles by remember { mutableStateOf<List<String>>(emptyList()) }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
 
-    fun clearPendingAttachment() {
-        pendingImageBase64 = null
-        pendingImageBitmap = null
-        pendingAttachmentName = null
+    fun clearPendingAttachments() {
+        pendingImages = emptyList()
+        pendingFiles = emptyList()
     }
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         val uri = pendingCameraUri
         if (success && uri != null) {
-            uriToScaledJpegBase64(context, uri)?.let { (b64, bmp) ->
-                pendingImageBase64 = b64
-                pendingImageBitmap = bmp
-                pendingAttachmentName = null
-            }
+            uriToScaledJpegBase64(context, uri)?.let { pair -> pendingImages = pendingImages + pair }
         }
     }
-
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             val uri = createImageCaptureUri(context)
@@ -143,35 +148,18 @@ fun ChatScreen(
             cameraLauncher.launch(uri)
         }
     }
-
-    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            uriToScaledJpegBase64(context, uri)?.let { (b64, bmp) ->
-                pendingImageBase64 = b64
-                pendingImageBitmap = bmp
-                pendingAttachmentName = null
-            }
-        }
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        uris.forEach { uri -> uriToScaledJpegBase64(context, uri)?.let { pair -> pendingImages = pendingImages + pair } }
     }
-
-    val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            pendingAttachmentName = queryFileName(context, uri) ?: "file"
-            pendingImageBase64 = null
-            pendingImageBitmap = null
-        }
+    val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        uris.forEach { uri -> pendingFiles = pendingFiles + (queryFileName(context, uri) ?: "file") }
     }
-
     val voiceLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            val results = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-            val recognized = results?.firstOrNull()
-            if (!recognized.isNullOrBlank()) {
-                input = if (input.isBlank()) recognized else "$input $recognized"
-            }
+            val recognized = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+            if (!recognized.isNullOrBlank()) input = if (input.isBlank()) recognized else "$input $recognized"
         }
     }
-
     val voicePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -179,28 +167,30 @@ fun ChatScreen(
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "id-ID")
                 putExtra(RecognizerIntent.EXTRA_PROMPT, "Bicara sekarang...")
             }
-            try {
-                voiceLauncher.launch(intent)
-            } catch (e: Exception) {
-                AppLog.add("VOICE_ERROR", "Speech recognition gak tersedia: ${e.message}")
-            }
+            try { voiceLauncher.launch(intent) } catch (e: Exception) { AppLog.add("VOICE_ERROR", e.message ?: "gagal") }
+        }
+    }
+
+    fun speak(text: String) {
+        ttsRef.value?.let {
+            it.language = Locale("id", "ID")
+            it.speak(plainTextForSpeech(text), TextToSpeech.QUEUE_FLUSH, null, "aiwa_tts")
         }
     }
 
     fun sendCurrentInput() {
         val text = input.trim()
-        if ((text.isEmpty() && pendingImageBase64 == null && pendingAttachmentName == null) || isLoading) return
+        if ((text.isEmpty() && pendingImages.isEmpty() && pendingFiles.isEmpty()) || isLoading) return
         messages.add(
             ChatMessage(
                 role = "user",
                 text = text,
-                imageBase64 = pendingImageBase64,
-                imageMimeType = if (pendingImageBase64 != null) "image/jpeg" else null,
-                attachmentName = pendingAttachmentName
+                imageAttachments = pendingImages.map { ImageAttachment(it.first, "image/jpeg") },
+                fileAttachmentNames = pendingFiles
             )
         )
         input = ""
-        clearPendingAttachment()
+        clearPendingAttachments()
         isLoading = true
         onMessagesChanged()
         AppLog.add("CHAT", "User: ${text.take(60)}")
@@ -211,13 +201,9 @@ fun ChatScreen(
             var streamed = false
             val finalReply = AiClient.sendMessageStreaming(context, historySnapshot, chatMode) { partial ->
                 streamed = true
-                if (aiMessageIndex < messages.size) {
-                    messages[aiMessageIndex] = messages[aiMessageIndex].copy(text = partial)
-                }
+                if (aiMessageIndex < messages.size) messages[aiMessageIndex] = messages[aiMessageIndex].copy(text = partial)
             }
-            if (aiMessageIndex < messages.size) {
-                messages[aiMessageIndex] = messages[aiMessageIndex].copy(text = finalReply)
-            }
+            if (aiMessageIndex < messages.size) messages[aiMessageIndex] = messages[aiMessageIndex].copy(text = finalReply)
             if (streamed) animatedUpTo = aiMessageIndex
             isLoading = false
             onMessagesChanged()
@@ -256,39 +242,26 @@ fun ChatScreen(
         onMessagesChanged()
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().systemBarsPadding().imePadding()
-    ) {
+    Column(modifier = Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(AiwaColors.Pink)
-                    .clickable(onClick = onOpenDrawer),
+                modifier = Modifier.size(40.dp).clip(CircleShape).background(AiwaColors.Pink).clickable(onClick = onOpenDrawer),
                 contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
-            }
+            ) { Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White) }
 
             Box {
                 Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(AiwaPillGradient)
-                        .clickable { modeMenuExpanded = true }
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(AiwaPillGradient)
+                        .clickable { modeMenuExpanded = true }.padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             ChatModeStore.labelFor(context, chatMode) + if (thinkingEnabled) " 💭" else "",
-                            color = Color.White,
-                            fontFamily = AiwaDecorativeFont,
-                            fontWeight = FontWeight.Bold
+                            color = Color.White, fontFamily = AiwaDecorativeFont, fontWeight = FontWeight.Bold
                         )
                         Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Color.White)
                     }
@@ -297,11 +270,7 @@ fun ChatScreen(
                     ChatModeStore.builtInModes.forEach { mode ->
                         DropdownMenuItem(
                             text = { Text(ChatModeStore.labelFor(context, mode)) },
-                            onClick = {
-                                chatMode = mode
-                                ChatModeStore.setMode(context, mode)
-                                modeMenuExpanded = false
-                            }
+                            onClick = { chatMode = mode; ChatModeStore.setMode(context, mode); modeMenuExpanded = false }
                         )
                     }
                     val profiles = AiProfileStore.getProfiles(context)
@@ -311,57 +280,29 @@ fun ChatScreen(
                             val modeValue = "profile:${profile.id}"
                             DropdownMenuItem(
                                 text = { Text(profile.name) },
-                                onClick = {
-                                    chatMode = modeValue
-                                    ChatModeStore.setMode(context, modeValue)
-                                    modeMenuExpanded = false
-                                }
+                                onClick = { chatMode = modeValue; ChatModeStore.setMode(context, modeValue); modeMenuExpanded = false }
                             )
                         }
                     }
                     HorizontalDivider()
                     DropdownMenuItem(
                         text = { Text(if (thinkingEnabled) "💭 Mode Thinking: ON" else "💭 Mode Thinking: OFF") },
-                        onClick = {
-                            thinkingEnabled = !thinkingEnabled
-                            ChatModeStore.setThinkingEnabled(context, thinkingEnabled)
-                        }
+                        onClick = { thinkingEnabled = !thinkingEnabled; ChatModeStore.setThinkingEnabled(context, thinkingEnabled) }
                     )
-                    DropdownMenuItem(
-                        text = { Text("⚙ Kelola Provider AI") },
-                        onClick = {
-                            modeMenuExpanded = false
-                            onOpenAiProviders()
-                        }
-                    )
+                    DropdownMenuItem(text = { Text("⚙ Kelola Provider AI") }, onClick = { modeMenuExpanded = false; onOpenAiProviders() })
                 }
             }
 
             Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(AiwaColors.Pink)
-                    .clickable {
-                        messages.clear()
-                        onNewChat()
-                    },
+                modifier = Modifier.size(40.dp).clip(CircleShape).background(AiwaColors.Pink)
+                    .clickable { messages.clear(); onNewChat() },
                 contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Chat Baru", tint = Color.White)
-            }
+            ) { Icon(Icons.Default.Add, contentDescription = "Chat Baru", tint = Color.White) }
         }
 
         if (messages.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    "Halo, ada yang bisa saya bantu?",
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(32.dp)
-                )
+            Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                Text("Halo, ada yang bisa saya bantu?", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(32.dp))
             }
         } else {
             LazyColumn(
@@ -377,18 +318,12 @@ fun ChatScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
                     ) {
-                        Row(
-                            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
-                            verticalAlignment = Alignment.Top
-                        ) {
+                        Row(horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
                             if (!isUser) {
                                 Image(
                                     painter = painterResource(id = R.mipmap.ic_launcher),
                                     contentDescription = null,
-                                    modifier = Modifier
-                                        .padding(top = 2.dp)
-                                        .size(28.dp)
-                                        .clip(CircleShape)
+                                    modifier = Modifier.padding(top = 2.dp).size(28.dp).clip(CircleShape)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                             }
@@ -396,12 +331,8 @@ fun ChatScreen(
                                 colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                                 border = BorderStroke(1.5.dp, AiwaColors.Pink),
                                 shape = RoundedCornerShape(20.dp),
-                                modifier = Modifier
-                                    .widthIn(max = 280.dp)
-                                    .background(
-                                        if (isUser) SolidColor(AiwaColors.Pink) else AiwaBubbleGradient,
-                                        RoundedCornerShape(20.dp)
-                                    )
+                                modifier = Modifier.widthIn(max = 280.dp)
+                                    .background(if (isUser) SolidColor(AiwaColors.Pink) else AiwaBubbleGradient, RoundedCornerShape(20.dp))
                             ) {
                                 Column(modifier = Modifier.padding(14.dp)) {
                                     MessageContent(
@@ -414,29 +345,22 @@ fun ChatScreen(
                             }
                         }
                         if (!isLoading) {
-                            Row(
-                                modifier = Modifier.padding(top = 2.dp, start = if (!isUser) 36.dp else 0.dp)
-                            ) {
+                            Row(modifier = Modifier.padding(top = 2.dp, start = if (!isUser) 36.dp else 0.dp)) {
                                 if (isUser) {
                                     Box(
-                                        modifier = Modifier
-                                            .size(24.dp)
-                                            .clip(CircleShape)
-                                            .clickable { startEditMessage(originalIndex) },
+                                        modifier = Modifier.size(24.dp).clip(CircleShape).clickable { startEditMessage(originalIndex) },
                                         contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = AiwaColors.Pink, modifier = Modifier.size(16.dp))
-                                    }
+                                    ) { Icon(Icons.Default.Edit, contentDescription = "Edit", tint = AiwaColors.Pink, modifier = Modifier.size(16.dp)) }
                                 } else if (msg.text.isNotBlank()) {
                                     Box(
-                                        modifier = Modifier
-                                            .size(24.dp)
-                                            .clip(CircleShape)
-                                            .clickable { regenerateMessage(originalIndex) },
+                                        modifier = Modifier.size(24.dp).clip(CircleShape).clickable { regenerateMessage(originalIndex) },
                                         contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(Icons.Default.Refresh, contentDescription = "Regenerate", tint = AiwaColors.Pink, modifier = Modifier.size(16.dp))
-                                    }
+                                    ) { Icon(Icons.Default.Refresh, contentDescription = "Regenerate", tint = AiwaColors.Pink, modifier = Modifier.size(16.dp)) }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Box(
+                                        modifier = Modifier.size(24.dp).clip(CircleShape).clickable { speak(msg.text) },
+                                        contentAlignment = Alignment.Center
+                                    ) { Icon(Icons.Default.VolumeUp, contentDescription = "Dengar", tint = AiwaColors.Pink, modifier = Modifier.size(16.dp)) }
                                 }
                             }
                         }
@@ -445,27 +369,31 @@ fun ChatScreen(
             }
         }
 
-        if (pendingImageBitmap != null || pendingAttachmentName != null) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                pendingImageBitmap?.let { bmp ->
-                    Image(bitmap = bmp.asImageBitmap(), contentDescription = null, modifier = Modifier.size(48.dp))
+        if (pendingImages.isNotEmpty() || pendingFiles.isNotEmpty()) {
+            LazyRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                itemsIndexed(pendingImages) { i, pair ->
+                    Box(modifier = Modifier.padding(end = 8.dp)) {
+                        Image(bitmap = pair.second.asImageBitmap(), contentDescription = null, modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)))
+                        Box(
+                            modifier = Modifier.size(18.dp).clip(CircleShape).background(AiwaColors.Pink)
+                                .clickable { pendingImages = pendingImages.filterIndexed { idx, _ -> idx != i } },
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Default.Close, contentDescription = "Hapus", tint = Color.White, modifier = Modifier.size(12.dp)) }
+                    }
                 }
-                pendingAttachmentName?.let { name ->
-                    Text("📎 $name", modifier = Modifier.padding(start = 8.dp))
-                }
-                Spacer(modifier = Modifier.weight(1f))
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(AiwaColors.Pink)
-                        .clickable { clearPendingAttachment() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Close, contentDescription = "Batal lampiran", tint = Color.White, modifier = Modifier.size(16.dp))
+                itemsIndexed(pendingFiles) { i, name ->
+                    Row(
+                        modifier = Modifier.padding(end = 8.dp).clip(RoundedCornerShape(8.dp))
+                            .background(Color.Gray.copy(alpha = 0.2f)).padding(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("📎 $name", fontSize = 11.sp, maxLines = 1)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            Icons.Default.Close, contentDescription = "Hapus", modifier = Modifier.size(14.dp)
+                                .clickable { pendingFiles = pendingFiles.filterIndexed { idx, _ -> idx != i } }
+                        )
+                    }
                 }
             }
         }
@@ -476,105 +404,69 @@ fun ChatScreen(
         ) {
             Box {
                 Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(AiwaColors.Pink)
-                        .clickable { attachMenuExpanded = true },
+                    modifier = Modifier.size(40.dp).clip(CircleShape).background(AiwaColors.Pink).clickable { attachMenuExpanded = true },
                     contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.AttachFile, contentDescription = "Lampirkan", tint = Color.White)
-                }
+                ) { Icon(Icons.Default.AttachFile, contentDescription = "Lampirkan", tint = Color.White) }
                 DropdownMenu(expanded = attachMenuExpanded, onDismissRequest = { attachMenuExpanded = false }) {
-                    DropdownMenuItem(text = { Text("Kamera") }, onClick = {
-                        attachMenuExpanded = false
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                    })
-                    DropdownMenuItem(text = { Text("Galeri") }, onClick = {
-                        attachMenuExpanded = false
-                        galleryLauncher.launch("image/*")
-                    })
-                    DropdownMenuItem(text = { Text("File") }, onClick = {
-                        attachMenuExpanded = false
-                        fileLauncher.launch("*/*")
-                    })
+                    DropdownMenuItem(text = { Text("Kamera") }, onClick = { attachMenuExpanded = false; cameraPermissionLauncher.launch(Manifest.permission.CAMERA) })
+                    DropdownMenuItem(text = { Text("Galeri (bisa pilih banyak)") }, onClick = { attachMenuExpanded = false; galleryLauncher.launch("image/*") })
+                    DropdownMenuItem(text = { Text("File (bisa pilih banyak)") }, onClick = { attachMenuExpanded = false; fileLauncher.launch(arrayOf("*/*")) })
                 }
             }
 
             Spacer(modifier = Modifier.width(6.dp))
 
             Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(AiwaColors.Pink)
+                modifier = Modifier.size(40.dp).clip(CircleShape).background(AiwaColors.Pink)
                     .clickable { voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
                 contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Mic, contentDescription = "Bicara", tint = Color.White)
-            }
+            ) { Icon(Icons.Default.Mic, contentDescription = "Bicara", tint = Color.White) }
 
             Spacer(modifier = Modifier.width(6.dp))
 
             OutlinedTextField(
-                value = input,
-                onValueChange = { input = it },
+                value = input, onValueChange = { input = it },
                 modifier = Modifier.weight(1f).heightIn(max = 120.dp),
-                placeholder = { Text("Tanya AI...") },
-                shape = RoundedCornerShape(24.dp),
-                maxLines = 5
+                placeholder = { Text("Tanya AI...") }, shape = RoundedCornerShape(24.dp), maxLines = 5
             )
 
             Spacer(modifier = Modifier.width(8.dp))
 
             Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(AiwaColors.Pink)
-                    .clickable { sendCurrentInput() },
+                modifier = Modifier.size(44.dp).clip(CircleShape).background(AiwaColors.Pink).clickable { sendCurrentInput() },
                 contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Color.White)
-            }
+            ) { Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Color.White) }
         }
     }
 }
 
 @Composable
-private fun MessageContent(
-    msg: ChatMessage,
-    isLatestAi: Boolean = false,
-    animate: Boolean = false,
-    onAnimationDone: () -> Unit = {}
-) {
-    msg.imageBase64?.let { b64 ->
-        val bitmap = remember(b64) { decodeBase64ToBitmap(b64) }
-        bitmap?.let {
-            Image(bitmap = it.asImageBitmap(), contentDescription = null, modifier = Modifier.size(180.dp))
-            Spacer(modifier = Modifier.height(4.dp))
+private fun MessageContent(msg: ChatMessage, isLatestAi: Boolean = false, animate: Boolean = false, onAnimationDone: () -> Unit = {}) {
+    if (msg.imageAttachments.isNotEmpty()) {
+        LazyRow(modifier = Modifier.padding(bottom = 4.dp)) {
+            itemsIndexed(msg.imageAttachments) { _, img ->
+                val bitmap = remember(img.base64) { decodeBase64ToBitmap(img.base64) }
+                bitmap?.let {
+                    Image(bitmap = it.asImageBitmap(), contentDescription = null, modifier = Modifier.padding(end = 6.dp).size(140.dp))
+                }
+            }
         }
     }
-    msg.attachmentName?.let { name ->
+    msg.fileAttachmentNames.forEach { name ->
         Text("\ud83d\udcce $name", color = Color.White, style = MaterialTheme.typography.bodySmall)
-        Spacer(modifier = Modifier.height(4.dp))
     }
+    if (msg.fileAttachmentNames.isNotEmpty()) Spacer(modifier = Modifier.height(4.dp))
 
     if (msg.role != "user" && msg.text.isBlank() && isLatestAi) {
         CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White)
     } else if (msg.text.isNotBlank()) {
         val (thinking, mainText) = remember(msg.text) { extractThinking(msg.text) }
-
         thinking?.let { ThinkingBlock(it) }
-
         if (animate) {
             var visibleChars by remember(mainText) { mutableStateOf(0) }
             LaunchedEffect(mainText) {
                 val step = maxOf(1, mainText.length / 100)
-                while (visibleChars < mainText.length) {
-                    visibleChars = minOf(mainText.length, visibleChars + step)
-                    delay(12L)
-                }
+                while (visibleChars < mainText.length) { visibleChars = minOf(mainText.length, visibleChars + step); delay(12L) }
                 onAnimationDone()
             }
             RenderMessageBody(mainText.substring(0, visibleChars))
@@ -588,19 +480,12 @@ private fun MessageContent(
 private fun ThinkingBlock(thinking: String) {
     var expanded by remember { mutableStateOf(false) }
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 8.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color.White.copy(alpha = 0.08f))
-            .clickable { expanded = !expanded }
-            .padding(10.dp)
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).clip(RoundedCornerShape(10.dp))
+            .background(Color.White.copy(alpha = 0.08f)).clickable { expanded = !expanded }.padding(10.dp)
     ) {
         Text(
             if (expanded) "💭 Proses berpikir (tap buat tutup)" else "💭 Proses berpikir (tap buat lihat)",
-            color = Color.Gray,
-            fontSize = 12.sp,
-            fontStyle = FontStyle.Italic
+            color = Color.Gray, fontSize = 12.sp, fontStyle = FontStyle.Italic
         )
         if (expanded) {
             Spacer(modifier = Modifier.height(6.dp))
@@ -614,11 +499,8 @@ private fun RenderMessageBody(text: String) {
     val segments = remember(text) { parseSegments(text) }
     Column {
         segments.forEach { seg ->
-            if (seg.isCode) {
-                CodeBlock(seg.content, seg.language)
-            } else if (seg.content.isNotBlank()) {
-                MarkdownText(seg.content.trim('\n'), Color.White)
-            }
+            if (seg.isCode) CodeBlock(seg.content, seg.language)
+            else if (seg.content.isNotBlank()) MarkdownText(seg.content.trim('\n'), Color.White)
         }
     }
 }
@@ -631,17 +513,9 @@ private fun MarkdownText(text: String, color: Color) {
                 line.startsWith("### ") -> Text(buildInlineAnnotated(line.removePrefix("### "), color), color = color, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 line.startsWith("## ") -> Text(buildInlineAnnotated(line.removePrefix("## "), color), color = color, fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 line.startsWith("# ") -> Text(buildInlineAnnotated(line.removePrefix("# "), color), color = color, fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                line.trimStart().startsWith("- ") -> Row {
-                    Text("•  ", color = color)
-                    Text(buildInlineAnnotated(line.trimStart().removePrefix("- "), color), color = color)
-                }
-                line.trimStart().startsWith("* ") -> Row {
-                    Text("•  ", color = color)
-                    Text(buildInlineAnnotated(line.trimStart().removePrefix("* "), color), color = color)
-                }
-                Regex("^\\d+\\.\\s").containsMatchIn(line.trimStart()) -> {
-                    Text(buildInlineAnnotated(line.trimStart(), color), color = color)
-                }
+                line.trimStart().startsWith("- ") -> Row { Text("•  ", color = color); Text(buildInlineAnnotated(line.trimStart().removePrefix("- "), color), color = color) }
+                line.trimStart().startsWith("* ") -> Row { Text("•  ", color = color); Text(buildInlineAnnotated(line.trimStart().removePrefix("* "), color), color = color) }
+                Regex("^\\d+\\.\\s").containsMatchIn(line.trimStart()) -> Text(buildInlineAnnotated(line.trimStart(), color), color = color)
                 line.isBlank() -> Spacer(modifier = Modifier.height(6.dp))
                 else -> Text(buildInlineAnnotated(line, color), color = color)
             }
@@ -654,81 +528,36 @@ private fun buildInlineAnnotated(line: String, baseColor: Color): AnnotatedStrin
         val pattern = Regex("(\\*\\*[^*]+?\\*\\*|__[^_]+?__|`[^`]+?`|\\*[^*]+?\\*|_[^_]+?_)")
         var lastIndex = 0
         pattern.findAll(line).forEach { match ->
-            if (match.range.first > lastIndex) {
-                append(line.substring(lastIndex, match.range.first))
-            }
+            if (match.range.first > lastIndex) append(line.substring(lastIndex, match.range.first))
             val token = match.value
             when {
-                token.startsWith("**") -> {
-                    pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
-                    append(token.removePrefix("**").removeSuffix("**"))
-                    pop()
-                }
-                token.startsWith("__") -> {
-                    pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
-                    append(token.removePrefix("__").removeSuffix("__"))
-                    pop()
-                }
-                token.startsWith("`") -> {
-                    pushStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = Color.White.copy(alpha = 0.15f)))
-                    append(token.removePrefix("`").removeSuffix("`"))
-                    pop()
-                }
-                token.startsWith("*") -> {
-                    pushStyle(SpanStyle(fontStyle = FontStyle.Italic))
-                    append(token.removePrefix("*").removeSuffix("*"))
-                    pop()
-                }
-                token.startsWith("_") -> {
-                    pushStyle(SpanStyle(fontStyle = FontStyle.Italic))
-                    append(token.removePrefix("_").removeSuffix("_"))
-                    pop()
-                }
+                token.startsWith("**") -> { pushStyle(SpanStyle(fontWeight = FontWeight.Bold)); append(token.removePrefix("**").removeSuffix("**")); pop() }
+                token.startsWith("__") -> { pushStyle(SpanStyle(fontWeight = FontWeight.Bold)); append(token.removePrefix("__").removeSuffix("__")); pop() }
+                token.startsWith("`") -> { pushStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = Color.White.copy(alpha = 0.15f))); append(token.removePrefix("`").removeSuffix("`")); pop() }
+                token.startsWith("*") -> { pushStyle(SpanStyle(fontStyle = FontStyle.Italic)); append(token.removePrefix("*").removeSuffix("*")); pop() }
+                token.startsWith("_") -> { pushStyle(SpanStyle(fontStyle = FontStyle.Italic)); append(token.removePrefix("_").removeSuffix("_")); pop() }
             }
             lastIndex = match.range.last + 1
         }
-        if (lastIndex < line.length) {
-            append(line.substring(lastIndex))
-        }
+        if (lastIndex < line.length) append(line.substring(lastIndex))
     }
 }
 
 @Composable
 private fun CodeBlock(code: String, language: String?) {
     val clipboardManager = LocalClipboardManager.current
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color(0xFF0D0D0D))
-    ) {
+    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF0D0D0D))) {
         Column(modifier = Modifier.padding(10.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(language ?: "code", color = Color.Gray, fontSize = 11.sp)
                 Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.15f))
+                    modifier = Modifier.size(28.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f))
                         .clickable { clipboardManager.setText(AnnotatedString(code)) },
                     contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "Salin kode", tint = Color.White, modifier = Modifier.size(14.dp))
-                }
+                ) { Icon(Icons.Default.ContentCopy, contentDescription = "Salin kode", tint = Color.White, modifier = Modifier.size(14.dp)) }
             }
             Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                code.trim('\n'),
-                color = Color(0xFF7CFC9A),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 13.sp,
-                modifier = Modifier.horizontalScroll(rememberScrollState())
-            )
+            Text(code.trim('\n'), color = Color(0xFF7CFC9A), fontFamily = FontFamily.Monospace, fontSize = 13.sp, modifier = Modifier.horizontalScroll(rememberScrollState()))
         }
     }
 }
@@ -740,17 +569,11 @@ private fun parseSegments(text: String): List<TextSegment> {
     val regex = Regex("```(\\w*)\\n?([\\s\\S]*?)```")
     var lastEnd = 0
     regex.findAll(text).forEach { match ->
-        if (match.range.first > lastEnd) {
-            segments.add(TextSegment(false, null, text.substring(lastEnd, match.range.first)))
-        }
-        val lang = match.groupValues[1].ifBlank { null }
-        val code = match.groupValues[2]
-        segments.add(TextSegment(true, lang, code))
+        if (match.range.first > lastEnd) segments.add(TextSegment(false, null, text.substring(lastEnd, match.range.first)))
+        segments.add(TextSegment(true, match.groupValues[1].ifBlank { null }, match.groupValues[2]))
         lastEnd = match.range.last + 1
     }
-    if (lastEnd < text.length) {
-        segments.add(TextSegment(false, null, text.substring(lastEnd)))
-    }
+    if (lastEnd < text.length) segments.add(TextSegment(false, null, text.substring(lastEnd)))
     if (segments.isEmpty()) segments.add(TextSegment(false, null, text))
     return segments
 }
@@ -762,9 +585,13 @@ private fun extractThinking(text: String): Pair<String?, String> {
         val thinkingText = match.groupValues[1].trim()
         val rest = text.removeRange(match.range).trim()
         thinkingText to rest
-    } else {
-        null to text
-    }
+    } else null to text
+}
+
+private fun plainTextForSpeech(text: String): String {
+    val (_, mainText) = extractThinking(text)
+    val withoutCode = mainText.replace(Regex("```[\\s\\S]*?```"), " kode diabaikan ")
+    return withoutCode.replace(Regex("[*_`#]"), "")
 }
 
 private fun createImageCaptureUri(context: Context): Uri {
@@ -790,22 +617,16 @@ private fun uriToScaledJpegBase64(context: Context, uri: Uri, maxDimension: Int 
         input.close()
         if (original == null) return null
         val scale = minOf(1f, maxDimension.toFloat() / maxOf(original.width, original.height))
-        val scaled = if (scale < 1f) {
-            Bitmap.createScaledBitmap(original, (original.width * scale).toInt(), (original.height * scale).toInt(), true)
-        } else original
+        val scaled = if (scale < 1f) Bitmap.createScaledBitmap(original, (original.width * scale).toInt(), (original.height * scale).toInt(), true) else original
         val outputStream = ByteArrayOutputStream()
         scaled.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
         Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP) to scaled
-    } catch (e: Exception) {
-        null
-    }
+    } catch (e: Exception) { null }
 }
 
 private fun decodeBase64ToBitmap(base64: String): Bitmap? {
     return try {
         val bytes = Base64.decode(base64, Base64.NO_WRAP)
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-    } catch (e: Exception) {
-        null
-    }
+    } catch (e: Exception) { null }
 }

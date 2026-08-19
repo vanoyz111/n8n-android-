@@ -90,6 +90,9 @@ fun AutoReplyScreen(onBack: () -> Unit) {
     var contactList by remember { mutableStateOf(AutoReplyStore.getContactList(context)) }
     var showAddContactDialog by remember { mutableStateOf(false) }
     var showDeviceContactsDialog by remember { mutableStateOf(false) }
+    var businessHoursEnabled by remember { mutableStateOf(AutoReplyStore.isBusinessHoursEnabled(context)) }
+    var bhStart by remember { mutableStateOf(AutoReplyStore.getBusinessHoursStart(context).toString()) }
+    var bhEnd by remember { mutableStateOf(AutoReplyStore.getBusinessHoursEnd(context).toString()) }
     var deviceContacts by remember { mutableStateOf<List<String>>(emptyList()) }
     var isLoadingContacts by remember { mutableStateOf(false) }
 
@@ -270,6 +273,36 @@ fun AutoReplyScreen(onBack: () -> Unit) {
                         }
                     }
                 }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text("Jam Kerja", style = MaterialTheme.typography.titleMedium)
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+            Text("Cuma balas otomatis di jam tertentu", modifier = Modifier.weight(1f))
+            Switch(checked = businessHoursEnabled, onCheckedChange = {
+                businessHoursEnabled = it
+                AutoReplyStore.setBusinessHoursEnabled(context, it)
+            })
+        }
+        if (businessHoursEnabled) {
+            Row(modifier = Modifier.padding(top = 8.dp)) {
+                OutlinedTextField(
+                    value = bhStart,
+                    onValueChange = { v -> if (v.length <= 2 && v.all { it.isDigit() }) { bhStart = v; v.toIntOrNull()?.let { AutoReplyStore.setBusinessHoursStart(context, it.coerceIn(0, 23)) } } },
+                    label = { Text("Mulai (jam)") },
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                OutlinedTextField(
+                    value = bhEnd,
+                    onValueChange = { v -> if (v.length <= 2 && v.all { it.isDigit() }) { bhEnd = v; v.toIntOrNull()?.let { AutoReplyStore.setBusinessHoursEnd(context, it.coerceIn(0, 23)) } } },
+                    label = { Text("Selesai (jam)") },
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
 

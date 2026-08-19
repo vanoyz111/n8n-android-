@@ -21,7 +21,7 @@ object AiProfileStore {
     fun newId(): String = UUID.randomUUID().toString()
 
     fun getProfiles(context: Context): List<AiProfile> {
-        val raw = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_PROFILES, null)
+        val raw = com.vano.n8nmobile.security.SecurePrefs.get(context, PREFS_NAME).getString(KEY_PROFILES, null)
             ?: return emptyList()
         return try {
             val array = JSONArray(raw)
@@ -60,7 +60,7 @@ object AiProfileStore {
                 put("tier", p.tier)
             })
         }
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_PROFILES, array.toString()).apply()
+        com.vano.n8nmobile.security.SecurePrefs.get(context, PREFS_NAME).edit().putString(KEY_PROFILES, array.toString()).apply()
     }
 
     fun getProfile(context: Context, id: String): AiProfile? = getProfiles(context).firstOrNull { it.id == id }

@@ -32,22 +32,31 @@ object AiClient {
 
     fun isFailureMessage(text: String): Boolean = errorPrefixes.any { text.startsWith(it) }
 
+    suspend fun testConnection(providerType: String, baseUrl: String, apiKey: String, model: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            val testMsg = listOf(ChatMessage("user", "ping"))
+            val result = if (providerType == "gemini") {
+                callGeminiRaw(apiKey, model.ifBlank { "gemini-flash-latest" }, testMsg, "")
+            } else {
+                callOpenAiCompatibleRaw(baseUrl, apiKey, model, testMsg, "")
+            }
+            !isFailureMessage(result)
+        }
+    }
+
     private fun effectiveSystemPrompt(context: Context, settings: SettingsStore): String {
         val base = settings.systemPrompt
         return if (ChatModeStore.isThinkingEnabled(context)) {
             if (base.isBlank()) THINKING_INSTRUCTION else "$base\n\n$THINKING_INSTRUCTION"
-        } else {
-            base
-        }
+        } else base
     }
 
     private fun compressHistory(history: List<ChatMessage>, enabled: Boolean): List<ChatMessage> {
         if (!enabled || history.size <= 4) return history
         val cutoff = history.size - 4
         return history.mapIndexed { index, msg ->
-            if (index < cutoff && msg.text.length > 200) {
-                msg.copy(text = msg.text.take(200) + "... [dipotong buat hemat token]")
-            } else msg
+            if (index < cutoff && msg.text.length > 200) msg.copy(text = msg.text.take(200) + "... [dipotong buat hemat token]")
+            else msg
         }
     }
 
@@ -65,7 +74,7 @@ object AiClient {
             if (tierProfiles.isEmpty()) continue
             AppLog.add("TIER_FALLBACK", "Coba provider Tier $tierNum...")
             for (p in tierProfiles) {
-                val r = withContext(Dispatchers.IO) { callProfileWithKeyRotation(p, history, prompt) }
+                val r = withContext(Dispatchers.IO) { callProfileWithKeyRotation(context, p, history, prompt) }
                 if (!isFailureMessage(r)) return r
             }
         }
@@ -93,20 +102,14 @@ object AiClient {
             mode == "online" -> callPrimaryProvider(context, history, settings)
             mode.startsWith("profile:") -> {
                 val profileId = mode.removePrefix("profile:")
-                val profile = AiProfileStore.getProfile(context, profileId)
-                    ?: return "Provider gak ketemu, mungkin udah dihapus."
-                withContext(Dispatchers.IO) { callProfileWithKeyRotation(profile, history, effectiveSystemPrompt(context, settings)) }
+                val profile = AiProfileStore.getProfile(context, profileId) ?: return "Provider gak ketemu, mungkin udah dihapus."
+                withContext(Dispatchers.IO) { callProfileWithKeyRotation(context, profile, history, effectiveSystemPrompt(context, settings)) }
             }
             else -> sendMessage(context, historyRaw)
         }
     }
 
-    suspend fun sendMessageStreaming(
-        context: Context,
-        historyRaw: List<ChatMessage>,
-        mode: String,
-        onChunk: (String) -> Unit
-    ): String {
+    suspend fun sendMessageStreaming(context: Context, historyRaw: List<ChatMessage>, mode: String, onChunk: (String) -> Unit): String {
         val settings = SettingsStore(context)
         val history = compressHistory(historyRaw, settings.tokenSaverEnabled)
         val prompt = effectiveSystemPrompt(context, settings)
@@ -114,6 +117,7 @@ object AiClient {
             try {
                 when {
                     mode == "online" -> {
+                        QuotaTracker.recordCall(context, if (settings.aiProvider == "openai_compatible") "custom_primary" else "gemini")
                         if (settings.aiProvider == "openai_compatible") {
                             callOpenAiCompatibleStreamingRaw(settings.customBaseUrl, settings.customApiKey, settings.customModel, history, prompt, onChunk)
                         } else {
@@ -122,8 +126,8 @@ object AiClient {
                     }
                     mode.startsWith("profile:") -> {
                         val profileId = mode.removePrefix("profile:")
-                        val profile = AiProfileStore.getProfile(context, profileId)
-                            ?: return@withContext "Provider gak ketemu, mungkin udah dihapus."
+                        val profile = AiProfileStore.getProfile(context, profileId) ?: return@withContext "Provider gak ketemu, mungkin udah dihapus."
+                        QuotaTracker.recordCall(context, "profile:${profile.id}")
                         if (profile.apiKeys.isEmpty()) {
                             callOpenAiCompatibleStreamingRaw(profile.baseUrl, "", profile.model, history, prompt, onChunk)
                         } else {
@@ -144,150 +148,9 @@ object AiClient {
         }
     }
 
-    private fun callGeminiStreaming(
-        settings: SettingsStore,
-        history: List<ChatMessage>,
-        systemPrompt: String,
-        onChunk: (String) -> Unit
-    ): String {
-        val apiKey = settings.geminiApiKey
-        if (apiKey.isBlank()) return "API key Gemini belum diisi. Buka Settings buat masukin API key."
-        val model = settings.geminiModel.ifBlank { "gemini-flash-latest" }
-        val url = URL("https://generativelanguage.googleapis.com/v1beta/models/$model:streamGenerateContent?alt=sse&key=$apiKey")
-        val connection = url.openConnection() as HttpURLConnection
-        connection.requestMethod = "POST"
-        connection.setRequestProperty("Content-Type", "application/json")
-        connection.doOutput = true
-        connection.connectTimeout = 20000
-        connection.readTimeout = 60000
-
-        val contents = JSONArray()
-        history.forEach { msg ->
-            val role = if (msg.role == "user") "user" else "model"
-            if (msg.text.isNotBlank()) {
-                contents.put(JSONObject().apply {
-                    put("role", role)
-                    put("parts", JSONArray().put(JSONObject().apply { put("text", msg.text) }))
-                })
-            }
-        }
-
-        val bodyJson = JSONObject().apply {
-            put("contents", contents)
-            if (systemPrompt.isNotBlank()) {
-                put("systemInstruction", JSONObject().apply {
-                    put("parts", JSONArray().put(JSONObject().apply { put("text", systemPrompt) }))
-                })
-            }
-        }
-        connection.outputStream.use { it.write(bodyJson.toString().toByteArray()) }
-
-        val code = connection.responseCode
-        if (code !in 200..299) {
-            val errText = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-            AppLog.add("GEMINI_ERROR", "HTTP $code: ${errText.take(200)}")
-            connection.disconnect()
-            return "Gagal manggil Gemini (HTTP $code). Cek API key atau koneksi internet."
-        }
-
-        val fullText = StringBuilder()
-        connection.inputStream.bufferedReader().use { reader ->
-            reader.forEachLine { line ->
-                if (line.startsWith("data: ")) {
-                    val jsonPart = line.removePrefix("data: ").trim()
-                    if (jsonPart.isNotBlank() && jsonPart != "[DONE]") {
-                        try {
-                            val chunkJson = JSONObject(jsonPart)
-                            val text = chunkJson.optJSONArray("candidates")
-                                ?.optJSONObject(0)?.optJSONObject("content")
-                                ?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")
-                            if (!text.isNullOrEmpty()) {
-                                fullText.append(text)
-                                onChunk(fullText.toString())
-                            }
-                        } catch (e: Exception) { }
-                    }
-                }
-            }
-        }
-        connection.disconnect()
-        AppLog.add("CHAT", "Gemini streaming selesai (${fullText.length} karakter)")
-        return fullText.toString().ifBlank { "Gemini gak ngasih jawaban (response kosong)." }
-    }
-
-    private fun callOpenAiCompatibleStreamingRaw(
-        baseUrl: String,
-        apiKey: String,
-        model: String,
-        history: List<ChatMessage>,
-        systemPrompt: String,
-        onChunk: (String) -> Unit
-    ): String {
-        val trimmedBase = baseUrl.trimEnd('/')
-        if (trimmedBase.isBlank()) return "Base URL AI belum diisi. Buka Settings buat masukin URL-nya."
-        val url = URL("$trimmedBase/v1/chat/completions")
-        val connection = url.openConnection() as HttpURLConnection
-        connection.requestMethod = "POST"
-        connection.setRequestProperty("Content-Type", "application/json")
-        if (apiKey.isNotBlank()) connection.setRequestProperty("Authorization", "Bearer $apiKey")
-        connection.doOutput = true
-        connection.connectTimeout = 20000
-        connection.readTimeout = 60000
-
-        val messages = JSONArray()
-        if (systemPrompt.isNotBlank()) {
-            messages.put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
-        }
-        history.forEach { msg ->
-            val role = if (msg.role == "user") "user" else "assistant"
-            if (msg.text.isNotBlank()) {
-                messages.put(JSONObject().apply { put("role", role); put("content", msg.text) })
-            }
-        }
-
-        val bodyJson = JSONObject().apply {
-            put("model", model.ifBlank { "default" })
-            put("messages", messages)
-            put("stream", true)
-        }
-        connection.outputStream.use { it.write(bodyJson.toString().toByteArray()) }
-
-        val code = connection.responseCode
-        if (code !in 200..299) {
-            val errText = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-            AppLog.add("AI_PROVIDER_ERROR", "HTTP $code: ${errText.take(200)}")
-            connection.disconnect()
-            return "Gagal manggil AI (HTTP $code). Cek API key, model, atau URL-nya."
-        }
-
-        val fullText = StringBuilder()
-        connection.inputStream.bufferedReader().use { reader ->
-            reader.forEachLine { line ->
-                if (line.startsWith("data: ")) {
-                    val jsonPart = line.removePrefix("data: ").trim()
-                    if (jsonPart.isNotBlank() && jsonPart != "[DONE]") {
-                        try {
-                            val chunkJson = JSONObject(jsonPart)
-                            val delta = chunkJson.optJSONArray("choices")
-                                ?.optJSONObject(0)?.optJSONObject("delta")?.optString("content")
-                            if (!delta.isNullOrEmpty()) {
-                                fullText.append(delta)
-                                onChunk(fullText.toString())
-                            }
-                        } catch (e: Exception) { }
-                    }
-                }
-            }
-        }
-        connection.disconnect()
-        AppLog.add("CHAT", "AI streaming selesai (${fullText.length} karakter)")
-        return fullText.toString().ifBlank { "AI gak ngasih jawaban (response kosong)." }
-    }
-
-    private fun callProfileWithKeyRotation(profile: AiProfile, history: List<ChatMessage>, systemPrompt: String): String {
-        if (profile.apiKeys.isEmpty()) {
-            return callOpenAiCompatibleRaw(profile.baseUrl, "", profile.model, history, systemPrompt)
-        }
+    private fun callProfileWithKeyRotation(context: Context, profile: AiProfile, history: List<ChatMessage>, systemPrompt: String): String {
+        QuotaTracker.recordCall(context, "profile:${profile.id}")
+        if (profile.apiKeys.isEmpty()) return callOpenAiCompatibleRaw(profile.baseUrl, "", profile.model, history, systemPrompt)
         var lastError = ""
         for (key in profile.apiKeys) {
             val result = callOpenAiCompatibleRaw(profile.baseUrl, key, profile.model, history, systemPrompt)
@@ -298,19 +161,13 @@ object AiClient {
         return "Semua API key buat ${profile.name} gagal. Terakhir: $lastError"
     }
 
-    private suspend fun callPrimaryProvider(
-        context: Context,
-        history: List<ChatMessage>,
-        settings: SettingsStore
-    ): String {
+    private suspend fun callPrimaryProvider(context: Context, history: List<ChatMessage>, settings: SettingsStore): String {
         return withContext(Dispatchers.IO) {
             try {
+                QuotaTracker.recordCall(context, if (settings.aiProvider == "openai_compatible") "custom_primary" else "gemini")
                 val prompt = effectiveSystemPrompt(context, settings)
-                if (settings.aiProvider == "openai_compatible") {
-                    callOpenAiCompatible(settings, history, prompt)
-                } else {
-                    callGemini(settings, history, prompt)
-                }
+                if (settings.aiProvider == "openai_compatible") callOpenAiCompatible(settings, history, prompt)
+                else callGemini(settings, history, prompt)
             } catch (e: Exception) {
                 AppLog.add("AI_ERROR", e.message ?: "Unknown error")
                 "Terjadi error: ${e.message}"
@@ -318,32 +175,18 @@ object AiClient {
         }
     }
 
-    private suspend fun callLocalLlamatik(
-        context: Context,
-        history: List<ChatMessage>,
-        settings: SettingsStore
-    ): String {
+    private suspend fun callLocalLlamatik(context: Context, history: List<ChatMessage>, settings: SettingsStore): String {
         return withContext(Dispatchers.IO) {
             try {
                 val modelPath = LocalModelStore.getDownloadedModelPath(context)
                     ?: return@withContext "Model lokal belum didownload. Buka Settings > AI Lokal."
-
                 val loaded = LocalModelRuntime.ensureLoaded(context, modelPath)
                 if (!loaded) return@withContext "Gagal memuat model lokal."
-
                 val prompt = effectiveSystemPrompt(context, settings)
                 val messages = mutableListOf<Pair<String, String>>()
-                if (prompt.isNotBlank()) {
-                    messages.add("system" to prompt)
-                }
-                history.forEach { msg ->
-                    messages.add((if (msg.role == "user") "user" else "assistant") to msg.text)
-                }
-
-                val finalPrompt = LocalModelRuntime.applyChatTemplate(messages)
-                    ?: history.lastOrNull { it.role == "user" }?.text
-                    ?: ""
-
+                if (prompt.isNotBlank()) messages.add("system" to prompt)
+                history.forEach { msg -> messages.add((if (msg.role == "user") "user" else "assistant") to msg.text) }
+                val finalPrompt = LocalModelRuntime.applyChatTemplate(messages) ?: history.lastOrNull { it.role == "user" }?.text ?: ""
                 val result = LocalModelRuntime.generate(finalPrompt)
                 AppLog.add("CHAT", "AI Lokal (GGUF) merespons (${result.length} karakter)")
                 result
@@ -354,12 +197,7 @@ object AiClient {
         }
     }
 
-    private suspend fun callLocalLiteRt(
-        context: Context,
-        history: List<ChatMessage>,
-        settings: SettingsStore,
-        modelPath: String
-    ): String {
+    private suspend fun callLocalLiteRt(context: Context, history: List<ChatMessage>, settings: SettingsStore, modelPath: String): String {
         return withContext(Dispatchers.IO) {
             try {
                 val prompt = effectiveSystemPrompt(context, settings)
@@ -376,10 +214,44 @@ object AiClient {
         }
     }
 
-    private fun callGemini(settings: SettingsStore, history: List<ChatMessage>, systemPrompt: String): String {
-        val apiKey = settings.geminiApiKey
+    private fun buildGeminiContents(history: List<ChatMessage>): JSONArray {
+        val contents = JSONArray()
+        history.forEachIndexed { index, msg ->
+            val role = if (msg.role == "user") "user" else "model"
+            val parts = JSONArray()
+            val isLastMessage = index == history.lastIndex
+
+            var textForTurn = msg.text
+            if (msg.fileAttachmentNames.isNotEmpty()) {
+                val note = msg.fileAttachmentNames.joinToString(", ") { "[Lampiran file: $it]" }
+                textForTurn = if (textForTurn.isBlank()) note else "$textForTurn\n$note"
+            }
+
+            if (msg.imageAttachments.isNotEmpty()) {
+                if (isLastMessage) {
+                    msg.imageAttachments.forEach { img ->
+                        parts.put(JSONObject().apply {
+                            put("inline_data", JSONObject().apply {
+                                put("mime_type", img.mimeType); put("data", img.base64)
+                            })
+                        })
+                    }
+                    if (textForTurn.isNotBlank()) parts.put(JSONObject().apply { put("text", textForTurn) })
+                } else {
+                    val placeholder = if (textForTurn.isNotBlank()) textForTurn else "[${msg.imageAttachments.size} gambar terlampir]"
+                    parts.put(JSONObject().apply { put("text", placeholder) })
+                }
+            } else if (textForTurn.isNotBlank()) {
+                parts.put(JSONObject().apply { put("text", textForTurn) })
+            }
+
+            if (parts.length() > 0) contents.put(JSONObject().apply { put("role", role); put("parts", parts) })
+        }
+        return contents
+    }
+
+    private fun callGeminiRaw(apiKey: String, model: String, history: List<ChatMessage>, systemPrompt: String): String {
         if (apiKey.isBlank()) return "API key Gemini belum diisi. Buka Settings buat masukin API key."
-        val model = settings.geminiModel.ifBlank { "gemini-flash-latest" }
         val url = URL("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey")
         val connection = url.openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
@@ -388,45 +260,8 @@ object AiClient {
         connection.connectTimeout = 20000
         connection.readTimeout = 60000
 
-        val contents = JSONArray()
-        history.forEachIndexed { index, msg ->
-            val role = if (msg.role == "user") "user" else "model"
-            val parts = JSONArray()
-            val isLastMessage = index == history.lastIndex
-
-            var textForTurn = msg.text
-            if (msg.attachmentName != null) {
-                textForTurn = if (textForTurn.isBlank()) "[Lampiran file: ${msg.attachmentName}]"
-                else "$textForTurn\n[Lampiran file: ${msg.attachmentName}]"
-            }
-
-            if (msg.imageBase64 != null) {
-                if (isLastMessage) {
-                    parts.put(JSONObject().apply {
-                        put("inline_data", JSONObject().apply {
-                            put("mime_type", msg.imageMimeType ?: "image/jpeg")
-                            put("data", msg.imageBase64)
-                        })
-                    })
-                    if (textForTurn.isNotBlank()) parts.put(JSONObject().apply { put("text", textForTurn) })
-                } else {
-                    val placeholder = if (textForTurn.isNotBlank()) textForTurn else "[gambar terlampir]"
-                    parts.put(JSONObject().apply { put("text", placeholder) })
-                }
-            } else if (textForTurn.isNotBlank()) {
-                parts.put(JSONObject().apply { put("text", textForTurn) })
-            }
-
-            if (parts.length() > 0) {
-                contents.put(JSONObject().apply {
-                    put("role", role)
-                    put("parts", parts)
-                })
-            }
-        }
-
         val bodyJson = JSONObject().apply {
-            put("contents", contents)
+            put("contents", buildGeminiContents(history))
             if (systemPrompt.isNotBlank()) {
                 put("systemInstruction", JSONObject().apply {
                     put("parts", JSONArray().put(JSONObject().apply { put("text", systemPrompt) }))
@@ -454,46 +289,96 @@ object AiClient {
         return text ?: "Gemini gak ngasih jawaban (response kosong)."
     }
 
-    private fun callOpenAiCompatibleRaw(
-        baseUrl: String,
-        apiKey: String,
-        model: String,
-        history: List<ChatMessage>,
-        systemPrompt: String
-    ): String {
+    private fun callGemini(settings: SettingsStore, history: List<ChatMessage>, systemPrompt: String): String {
+        val model = settings.geminiModel.ifBlank { "gemini-flash-latest" }
+        return callGeminiRaw(settings.geminiApiKey, model, history, systemPrompt)
+    }
+
+    private fun callGeminiStreaming(settings: SettingsStore, history: List<ChatMessage>, systemPrompt: String, onChunk: (String) -> Unit): String {
+        val apiKey = settings.geminiApiKey
+        if (apiKey.isBlank()) return "API key Gemini belum diisi. Buka Settings buat masukin API key."
+        val model = settings.geminiModel.ifBlank { "gemini-flash-latest" }
+        val url = URL("https://generativelanguage.googleapis.com/v1beta/models/$model:streamGenerateContent?alt=sse&key=$apiKey")
+        val connection = url.openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.doOutput = true
+        connection.connectTimeout = 20000
+        connection.readTimeout = 60000
+
+        val bodyJson = JSONObject().apply {
+            put("contents", buildGeminiContents(history))
+            if (systemPrompt.isNotBlank()) {
+                put("systemInstruction", JSONObject().apply {
+                    put("parts", JSONArray().put(JSONObject().apply { put("text", systemPrompt) }))
+                })
+            }
+        }
+        connection.outputStream.use { it.write(bodyJson.toString().toByteArray()) }
+
+        val code = connection.responseCode
+        if (code !in 200..299) {
+            val errText = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            AppLog.add("GEMINI_ERROR", "HTTP $code: ${errText.take(200)}")
+            connection.disconnect()
+            return "Gagal manggil Gemini (HTTP $code). Cek API key atau koneksi internet."
+        }
+
+        val fullText = StringBuilder()
+        connection.inputStream.bufferedReader().use { reader ->
+            reader.forEachLine { line ->
+                if (line.startsWith("data: ")) {
+                    val jsonPart = line.removePrefix("data: ").trim()
+                    if (jsonPart.isNotBlank() && jsonPart != "[DONE]") {
+                        try {
+                            val chunkJson = JSONObject(jsonPart)
+                            val text = chunkJson.optJSONArray("candidates")
+                                ?.optJSONObject(0)?.optJSONObject("content")
+                                ?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")
+                            if (!text.isNullOrEmpty()) { fullText.append(text); onChunk(fullText.toString()) }
+                        } catch (e: Exception) { }
+                    }
+                }
+            }
+        }
+        connection.disconnect()
+        AppLog.add("CHAT", "Gemini streaming selesai (${fullText.length} karakter)")
+        return fullText.toString().ifBlank { "Gemini gak ngasih jawaban (response kosong)." }
+    }
+
+    private fun buildOpenAiMessages(history: List<ChatMessage>, systemPrompt: String): JSONArray {
+        val messages = JSONArray()
+        if (systemPrompt.isNotBlank()) messages.put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
+        history.forEach { msg ->
+            val role = if (msg.role == "user") "user" else "assistant"
+            var content = msg.text
+            if (msg.fileAttachmentNames.isNotEmpty()) {
+                val note = msg.fileAttachmentNames.joinToString(", ") { "[Lampiran file: $it]" }
+                content = if (content.isBlank()) note else "$content\n$note"
+            }
+            if (msg.imageAttachments.isNotEmpty() && content.isBlank()) {
+                content = "[${msg.imageAttachments.size} gambar terlampir - provider ini belum mendukung analisis gambar]"
+            }
+            messages.put(JSONObject().apply { put("role", role); put("content", content) })
+        }
+        return messages
+    }
+
+    private fun callOpenAiCompatibleRaw(baseUrl: String, apiKey: String, model: String, history: List<ChatMessage>, systemPrompt: String): String {
         val trimmedBase = baseUrl.trimEnd('/')
         if (trimmedBase.isBlank()) return "Base URL AI belum diisi. Buka Settings buat masukin URL-nya."
         val url = URL("$trimmedBase/v1/chat/completions")
         val connection = url.openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
         connection.setRequestProperty("Content-Type", "application/json")
-        if (apiKey.isNotBlank()) {
-            connection.setRequestProperty("Authorization", "Bearer $apiKey")
-        }
+        if (apiKey.isNotBlank()) connection.setRequestProperty("Authorization", "Bearer $apiKey")
         connection.doOutput = true
         connection.connectTimeout = 20000
         connection.readTimeout = 60000
 
-        val messages = JSONArray()
-        if (systemPrompt.isNotBlank()) {
-            messages.put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
-        }
-        history.forEach { msg ->
-            val role = if (msg.role == "user") "user" else "assistant"
-            var content = msg.text
-            if (msg.attachmentName != null) {
-                content = if (content.isBlank()) "[Lampiran file: ${msg.attachmentName}]"
-                else "$content\n[Lampiran file: ${msg.attachmentName}]"
-            }
-            if (msg.imageBase64 != null && content.isBlank()) {
-                content = "[gambar terlampir - provider ini belum mendukung analisis gambar]"
-            }
-            messages.put(JSONObject().apply { put("role", role); put("content", content) })
-        }
-
         val bodyJson = JSONObject().apply {
             put("model", model.ifBlank { "default" })
-            put("messages", messages)
+            put("messages", buildOpenAiMessages(history, systemPrompt))
         }
         connection.outputStream.use { it.write(bodyJson.toString().toByteArray()) }
 
@@ -508,13 +393,58 @@ object AiClient {
         }
 
         val json = JSONObject(responseText)
-        val text = json.optJSONArray("choices")
-            ?.optJSONObject(0)?.optJSONObject("message")?.optString("content")
-
+        val text = json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.optString("content")
         AppLog.add("CHAT", "AI merespons (${text?.length ?: 0} karakter)")
         return text ?: "AI gak ngasih jawaban (response kosong)."
     }
 
     private fun callOpenAiCompatible(settings: SettingsStore, history: List<ChatMessage>, systemPrompt: String): String =
         callOpenAiCompatibleRaw(settings.customBaseUrl, settings.customApiKey, settings.customModel, history, systemPrompt)
+
+    private fun callOpenAiCompatibleStreamingRaw(baseUrl: String, apiKey: String, model: String, history: List<ChatMessage>, systemPrompt: String, onChunk: (String) -> Unit): String {
+        val trimmedBase = baseUrl.trimEnd('/')
+        if (trimmedBase.isBlank()) return "Base URL AI belum diisi. Buka Settings buat masukin URL-nya."
+        val url = URL("$trimmedBase/v1/chat/completions")
+        val connection = url.openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.setRequestProperty("Content-Type", "application/json")
+        if (apiKey.isNotBlank()) connection.setRequestProperty("Authorization", "Bearer $apiKey")
+        connection.doOutput = true
+        connection.connectTimeout = 20000
+        connection.readTimeout = 60000
+
+        val bodyJson = JSONObject().apply {
+            put("model", model.ifBlank { "default" })
+            put("messages", buildOpenAiMessages(history, systemPrompt))
+            put("stream", true)
+        }
+        connection.outputStream.use { it.write(bodyJson.toString().toByteArray()) }
+
+        val code = connection.responseCode
+        if (code !in 200..299) {
+            val errText = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            AppLog.add("AI_PROVIDER_ERROR", "HTTP $code: ${errText.take(200)}")
+            connection.disconnect()
+            return "Gagal manggil AI (HTTP $code). Cek API key, model, atau URL-nya."
+        }
+
+        val fullText = StringBuilder()
+        connection.inputStream.bufferedReader().use { reader ->
+            reader.forEachLine { line ->
+                if (line.startsWith("data: ")) {
+                    val jsonPart = line.removePrefix("data: ").trim()
+                    if (jsonPart.isNotBlank() && jsonPart != "[DONE]") {
+                        try {
+                            val chunkJson = JSONObject(jsonPart)
+                            val delta = chunkJson.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("delta")?.optString("content")
+                            if (!delta.isNullOrEmpty()) { fullText.append(delta); onChunk(fullText.toString()) }
+                        } catch (e: Exception) { }
+                    }
+                }
+            }
+        }
+        connection.disconnect()
+        AppLog.add("CHAT", "AI streaming selesai (${fullText.length} karakter)")
+        return fullText.toString().ifBlank { "AI gak ngasih jawaban (response kosong)." }
+    }
 }
