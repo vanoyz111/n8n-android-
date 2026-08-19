@@ -1,15 +1,16 @@
 package com.vano.n8nmobile.chat
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -27,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.vano.n8nmobile.settings.AiProfileStore
 import kotlinx.coroutines.launch
 
 private data class TranscriptEntry(val speaker: String, val text: String)
@@ -58,6 +61,9 @@ fun GroupChatScreen(onBack: () -> Unit) {
     val transcript = remember { mutableStateListOf<TranscriptEntry>() }
     var isRunning by remember { mutableStateOf(false) }
 
+    var deliberationMode by remember { mutableStateOf(true) }
+    var roundsText by remember { mutableStateOf("2") }
+
     Column(modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
@@ -68,8 +74,8 @@ fun GroupChatScreen(onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            "Bikin beberapa persona AI (karakter beda-beda), pilih yang aktif, terus mulai diskusi. " +
-                "Tiap persona bakal balas gantian sesuai urutan. Sesi ini gak tersimpan otomatis, ilang kalau keluar layar.",
+            "Bikin beberapa persona AI (karakter beda-beda, bisa pakai AI Lokal atau provider kustom kayak OpenRouter), " +
+                "pilih yang aktif, terus mulai diskusi. Sesi ini gak tersimpan otomatis, ilang kalau keluar layar.",
             style = MaterialTheme.typography.bodySmall
         )
 
@@ -92,11 +98,10 @@ fun GroupChatScreen(onBack: () -> Unit) {
                             if (checked) selectedIds.add(persona.id) else selectedIds.remove(persona.id)
                         }
                     )
-                    Text(
-                        persona.name,
-                        modifier = Modifier.weight(1f).padding(start = 4.dp),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    Column(modifier = Modifier.weight(1f).padding(start = 4.dp)) {
+                        Text(persona.name, style = MaterialTheme.typography.bodyMedium)
+                        Text(ChatModeStore.labelFor(context, persona.mode), style = MaterialTheme.typography.bodySmall)
+                    }
                     IconButton(onClick = { editingPersona = persona; showAddDialog = true }) {
                         Text("✎")
                     }
@@ -112,9 +117,30 @@ fun GroupChatScreen(onBack: () -> Unit) {
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         HorizontalDivider()
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Mode Musyawarah", style = MaterialTheme.typography.bodyMedium)
+                Text("Tiap persona wajib nanggepin pendapat yang lain, diakhiri 1 kesimpulan final", style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(checked = deliberationMode, onCheckedChange = { deliberationMode = it })
+        }
+        if (deliberationMode) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                Text("Jumlah ronde diskusi: ", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = roundsText,
+                    onValueChange = { v -> if (v.length <= 1 && v.all { it.isDigit() }) roundsText = v },
+                    modifier = Modifier.width(60.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        HorizontalDivider()
 
         LazyColumn(modifier = Modifier.weight(1f)) {
             items(transcript) { entry ->
@@ -151,15 +177,50 @@ fun GroupChatScreen(onBack: () -> Unit) {
                     input = ""
                     isRunning = true
                     scope.launch {
-                        for (persona in activePersonas) {
-                            val historyText = transcript.joinToString("\n") { "${it.speaker}: ${it.text}" }
-                            val prompt = buildString {
-                                if (persona.systemPrompt.isNotBlank()) append("${persona.systemPrompt}\n\n")
-                                append("Berikut percakapan grup sejauh ini:\n$historyText\n\n")
-                                append("Balas sebagai ${persona.name}, singkat (maksimal 3 kalimat) dan sesuai karaktermu.")
+                        if (deliberationMode && activePersonas.size > 1) {
+                            val rounds = (roundsText.toIntOrNull() ?: 2).coerceIn(1, 5)
+                            repeat(rounds) { roundIndex ->
+                                val isLastRound = roundIndex == rounds - 1
+                                for (persona in activePersonas) {
+                                    val historyText = transcript.joinToString("\n") { "${it.speaker}: ${it.text}" }
+                                    val prompt = buildString {
+                                        if (persona.systemPrompt.isNotBlank()) append("${persona.systemPrompt}\n\n")
+                                        append("Ini forum musyawarah beberapa AI buat cari jawaban paling tepat bareng-bareng, bukan cuma ngasih pendapat sendiri-sendiri.\n")
+                                        append("Topik: $text\n\n")
+                                        append("Diskusi sejauh ini:\n$historyText\n\n")
+                                        if (isLastRound) {
+                                            append("Ini ronde terakhir. Balas sebagai ${persona.name}: mulai arahkan ke kesepakatan bareng peserta lain, ")
+                                            append("sebutkan bagian mana yang kamu setuju dan kenapa. Singkat, maksimal 3 kalimat.")
+                                        } else {
+                                            append("Balas sebagai ${persona.name}: tanggapi langsung pendapat peserta lain yang barusan ngomong ")
+                                            append("(setuju/gak setuju dan kenapa, atau sempurnain jawabannya). Jangan cuma ulang pendapat sendiri. Singkat, maksimal 3 kalimat.")
+                                        }
+                                    }
+                                    val reply = AiClient.sendMessageWithMode(context, listOf(ChatMessage("user", prompt)), persona.mode)
+                                    transcript.add(TranscriptEntry(persona.name, reply))
+                                }
                             }
-                            val reply = AiClient.sendMessageWithMode(context, listOf(ChatMessage("user", prompt)), persona.mode)
-                            transcript.add(TranscriptEntry(persona.name, reply))
+
+                            val fullTranscript = transcript.joinToString("\n") { "${it.speaker}: ${it.text}" }
+                            val synthesisPrompt = buildString {
+                                append("Berikut hasil musyawarah beberapa AI soal topik: \"$text\"\n\n")
+                                append(fullTranscript)
+                                append("\n\nRangkum jadi SATU jawaban final yang paling tepat, hasil sintesis dari diskusi di atas. ")
+                                append("Sebutkan poin yang disepakati bersama. Jawab jelas dan terstruktur.")
+                            }
+                            val consensus = AiClient.sendMessageWithMode(context, listOf(ChatMessage("user", synthesisPrompt)), "auto")
+                            transcript.add(TranscriptEntry("📋 Kesimpulan Musyawarah", consensus))
+                        } else {
+                            for (persona in activePersonas) {
+                                val historyText = transcript.joinToString("\n") { "${it.speaker}: ${it.text}" }
+                                val prompt = buildString {
+                                    if (persona.systemPrompt.isNotBlank()) append("${persona.systemPrompt}\n\n")
+                                    append("Berikut percakapan grup sejauh ini:\n$historyText\n\n")
+                                    append("Balas sebagai ${persona.name}, singkat (maksimal 3 kalimat) dan sesuai karaktermu.")
+                                }
+                                val reply = AiClient.sendMessageWithMode(context, listOf(ChatMessage("user", prompt)), persona.mode)
+                                transcript.add(TranscriptEntry(persona.name, reply))
+                            }
                         }
                         isRunning = false
                     }
@@ -192,10 +253,18 @@ fun GroupChatScreen(onBack: () -> Unit) {
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("Mode AI", style = MaterialTheme.typography.bodySmall)
-                    Row {
-                        listOf("auto", "online", "local_gguf", "local_litert").forEach { m ->
-                            TextButton(onClick = { mode = m }) {
-                                Text(if (mode == m) "[$m]" else m, style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    val builtInOptions = listOf(
+                        "auto" to "Otomatis",
+                        "online" to "Online",
+                        "local_gguf" to "AI Lokal GGUF",
+                        "local_litert" to "AI Lokal LiteRT"
+                    )
+                    val profileOptions = AiProfileStore.getProfiles(context).map { "profile:${it.id}" to it.name }
+                    Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                        (builtInOptions + profileOptions).forEach { (value, label) ->
+                            TextButton(onClick = { mode = value }) {
+                                Text(if (mode == value) "[$label]" else label, style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
