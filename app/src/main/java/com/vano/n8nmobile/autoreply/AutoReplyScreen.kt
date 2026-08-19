@@ -326,6 +326,15 @@ fun AutoReplyScreen(onBack: () -> Unit) {
             })
         }
 
+        var ttsReadout by remember { mutableStateOf(AutoReplyStore.isTtsReadoutEnabled(context)) }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+            Text("Bacakan Notifikasi (TTS) — dibaca lokal di HP, BUKAN dikirim sebagai voice note", modifier = Modifier.weight(1f))
+            Switch(checked = ttsReadout, onCheckedChange = {
+                ttsReadout = it
+                AutoReplyStore.setTtsReadoutEnabled(context, it)
+            })
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(
             value = personaPrompt,

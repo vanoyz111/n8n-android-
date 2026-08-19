@@ -227,6 +227,9 @@ class WhatsAppNotificationListener : NotificationListenerService() {
             RemoteInput.addResultsToIntent(remoteInputs, intent, bundle)
             action.actionIntent.send(applicationContext, 0, intent)
             AppLog.add("AUTOREPLY", "Balas ke $sender: ${replyText.take(60)}")
+            if (AutoReplyStore.isTtsReadoutEnabled(applicationContext)) {
+                AutoReplyTts.speak(applicationContext, "Pesan dari $sender. Balasan otomatis: $replyText")
+            }
         } catch (e: PendingIntent.CanceledException) {
             AppLog.add("AUTOREPLY_ERROR", "Gagal kirim balasan: ${e.message}")
         } finally {

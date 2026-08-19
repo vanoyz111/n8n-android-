@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -117,6 +118,20 @@ fun WorkflowCanvasScreen(onOpenDrawer: () -> Unit) {
     var runResult by remember { mutableStateOf<ExecutionResult?>(null) }
 
     fun persist() {
+        val oldState = FlowStore.loadFlow(context, currentFlowId)
+        if (oldState != null) {
+            FlowHistoryStore.pushSnapshot(context, currentFlowId, oldState.nodes, oldState.edges, oldState.positions)
+        }
+        FlowStore.save(context, currentFlowId, flowName, nodes, edges, positions, nextId)
+        FlowScheduler.onFlowSaved(context, currentFlowId, nodes)
+        flowsList = FlowStore.listFlows(context)
+    }
+
+    fun undo() {
+        val snapshot = FlowHistoryStore.popSnapshot(context, currentFlowId) ?: return
+        nodes.clear(); nodes.addAll(snapshot.nodes)
+        edges.clear(); edges.addAll(snapshot.edges)
+        positions.clear(); positions.putAll(snapshot.positions)
         FlowStore.save(context, currentFlowId, flowName, nodes, edges, positions, nextId)
         FlowScheduler.onFlowSaved(context, currentFlowId, nodes)
         flowsList = FlowStore.listFlows(context)
@@ -142,6 +157,7 @@ fun WorkflowCanvasScreen(onOpenDrawer: () -> Unit) {
     }
 
     fun runWorkflow() {
+        FlowRunStatsStore.recordRun(context, currentFlowId)
         AppLog.add("FLOW", "Menjalankan workflow \"$flowName\" (${nodes.size} node)")
         val workflowNodes = nodes.map { n -> WorkflowNode(id = n.id, type = n.type, config = parseConfigText(n.configText)) }
         val workflowEdges = edges.map { WorkflowEdge(it.fromId, it.toId) }
@@ -337,8 +353,13 @@ fun WorkflowCanvasScreen(onOpenDrawer: () -> Unit) {
                     }
                 }
             }
-            Button(onClick = { runWorkflow() }) {
-                Text("▶ Jalankan")
+            Row {
+                IconButton(onClick = { undo() }) {
+                    Icon(Icons.Default.Undo, contentDescription = "Undo")
+                }
+                Button(onClick = { runWorkflow() }) {
+                    Text("▶ Jalankan")
+                }
             }
         }
     }

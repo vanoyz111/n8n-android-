@@ -23,6 +23,7 @@ class FlowAlarmReceiver : BroadcastReceiver() {
                 if (flowState == null) {
                     AppLog.add("SCHEDULE", "Gak ada flow terjadwal yang aktif")
                 } else {
+                    flowId?.let { FlowRunStatsStore.recordRun(context, it) }
                     AppLog.add("SCHEDULE", "Menjalankan flow terjadwal: ${flowState.name}")
                     val nodes = flowState.nodes.map {
                         WorkflowNode(id = it.id, type = it.type, config = FlowScheduler.parseConfig(it.configText))

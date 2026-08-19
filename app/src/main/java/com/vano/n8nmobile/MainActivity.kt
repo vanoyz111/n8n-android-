@@ -3,6 +3,7 @@ package com.vano.n8nmobile
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
+import android.content.Intent
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -78,6 +79,9 @@ import com.vano.n8nmobile.security.AppLockSettingsScreen
 import com.vano.n8nmobile.security.AppLockStore
 import com.vano.n8nmobile.backup.BackupRestoreScreen
 import com.vano.n8nmobile.health.HealthDashboardScreen
+import com.vano.n8nmobile.chat.GroupChatScreen
+import com.vano.n8nmobile.dashboard.DashboardScreen
+import androidx.compose.material.icons.filled.Groups
 import com.vano.n8nmobile.canvas.FlowScheduler
 import com.vano.n8nmobile.server.HealthCheckScheduler
 import com.vano.n8nmobile.settings.SettingsScreen
@@ -91,7 +95,7 @@ import com.vano.n8nmobile.ui.AiwaThemeStore
 import com.vano.n8nmobile.ui.ThemeCustomizationScreen
 import kotlinx.coroutines.launch
 
-private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN, AI_PROVIDERS, LOCAL_SERVER, APP_LOCK, BACKUP, HEALTH_DASHBOARD }
+private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN, AI_PROVIDERS, LOCAL_SERVER, APP_LOCK, BACKUP, HEALTH_DASHBOARD, GROUP_CHAT, DASHBOARD }
 
 class MainActivity : FragmentActivity() {
 
@@ -188,6 +192,10 @@ class MainActivity : FragmentActivity() {
                                     }
                                     AiwaDrawerButton(Icons.Default.Settings, "Setting") {
                                         currentScreen = AppScreen.SETTINGS
+                                        scope.launch { drawerState.close() }
+                                    }
+                                    AiwaDrawerButton(Icons.Default.Groups, "Grup AI") {
+                                        currentScreen = AppScreen.GROUP_CHAT
                                         scope.launch { drawerState.close() }
                                     }
 
@@ -347,9 +355,16 @@ class MainActivity : FragmentActivity() {
                                 onOpenLocalServer = { currentScreen = AppScreen.LOCAL_SERVER },
                                 onOpenAppLock = { currentScreen = AppScreen.APP_LOCK },
                                 onOpenBackup = { currentScreen = AppScreen.BACKUP },
-                                onOpenHealthDashboard = { currentScreen = AppScreen.HEALTH_DASHBOARD }
+                                onOpenHealthDashboard = { currentScreen = AppScreen.HEALTH_DASHBOARD },
+                                onOpenDashboard = { currentScreen = AppScreen.DASHBOARD }
                             )
                             AppScreen.HEALTH_DASHBOARD -> HealthDashboardScreen(
+                                onBack = { currentScreen = AppScreen.SETTINGS }
+                            )
+                            AppScreen.GROUP_CHAT -> GroupChatScreen(
+                                onBack = { currentScreen = AppScreen.CHAT }
+                            )
+                            AppScreen.DASHBOARD -> DashboardScreen(
                                 onBack = { currentScreen = AppScreen.SETTINGS }
                             )
                             AppScreen.APP_LOCK -> AppLockSettingsScreen(

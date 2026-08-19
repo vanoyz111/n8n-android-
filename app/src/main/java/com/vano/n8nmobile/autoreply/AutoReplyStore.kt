@@ -23,6 +23,9 @@ object AutoReplyStore {
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    fun isTtsReadoutEnabled(context: Context): Boolean = prefs(context).getBoolean("tts_readout_enabled", false)
+    fun setTtsReadoutEnabled(context: Context, v: Boolean) { prefs(context).edit().putBoolean("tts_readout_enabled", v).apply() }
+
     fun isEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_ENABLED, false)
 
     fun setEnabled(context: Context, enabled: Boolean) {

@@ -55,7 +55,8 @@ fun SettingsScreen(
     onOpenLocalServer: () -> Unit,
     onOpenAppLock: () -> Unit,
     onOpenBackup: () -> Unit,
-    onOpenHealthDashboard: () -> Unit
+    onOpenHealthDashboard: () -> Unit,
+    onOpenDashboard: () -> Unit
 ) {
     val context = LocalContext.current
     val store = remember { SettingsStore(context) }
@@ -248,6 +249,11 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = onOpenHealthDashboard) {
             Text("Cek Kesehatan Background")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(onClick = onOpenDashboard) {
+            Text("Dashboard Statistik")
         }
 
         Spacer(modifier = Modifier.height(24.dp))
