@@ -80,8 +80,8 @@ object AiClient {
         }
 
         AppLog.add("TIER_FALLBACK", "Semua provider online gagal, coba AI Lokal...")
-        val ggufPath = LocalModelStore.getDownloadedModelPath(context)
-        val litertPath = LiteRtModelStore.getDownloadedModelPath(context)
+        val ggufPath = LocalModelStore.getActiveModelPath(context)
+        val litertPath = LiteRtModelStore.getActiveModelPath(context)
         return when {
             ggufPath != null -> callLocalLlamatik(context, history, settings)
             litertPath != null -> callLocalLiteRt(context, history, settings, litertPath)
@@ -95,7 +95,7 @@ object AiClient {
         return when {
             mode == "local_gguf" -> withContext(Dispatchers.IO) { callLocalLlamatik(context, history, settings) }
             mode == "local_litert" -> {
-                val litertPath = LiteRtModelStore.getDownloadedModelPath(context)
+                val litertPath = LiteRtModelStore.getActiveModelPath(context)
                     ?: return "Model LiteRT belum didownload. Buka Settings > AI Lokal."
                 withContext(Dispatchers.IO) { callLocalLiteRt(context, history, settings, litertPath) }
             }
@@ -178,7 +178,7 @@ object AiClient {
     private suspend fun callLocalLlamatik(context: Context, history: List<ChatMessage>, settings: SettingsStore): String {
         return withContext(Dispatchers.IO) {
             try {
-                val modelPath = LocalModelStore.getDownloadedModelPath(context)
+                val modelPath = LocalModelStore.getActiveModelPath(context)
                     ?: return@withContext "Model lokal belum didownload. Buka Settings > AI Lokal."
                 val loaded = LocalModelRuntime.ensureLoaded(context, modelPath)
                 if (!loaded) return@withContext "Gagal memuat model lokal."

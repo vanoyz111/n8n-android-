@@ -6,6 +6,7 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,7 +21,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -80,7 +84,7 @@ fun LocalModelScreen(onBack: () -> Unit, onOpenModelSettings: () -> Unit) {
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             "Jalanin model AI langsung di HP, gak butuh internet, gak ada limit API. " +
-                "Dipakai otomatis kalau AI online gagal/limit.",
+                "Bisa simpan banyak model sekaligus, pilih mana yang aktif.",
             style = MaterialTheme.typography.bodySmall
         )
 
@@ -119,7 +123,10 @@ fun LocalModelScreen(onBack: () -> Unit, onOpenModelSettings: () -> Unit) {
 
 @Composable
 private fun GgufSection(context: Context, scope: kotlinx.coroutines.CoroutineScope) {
-    var downloadedName by remember { mutableStateOf(LocalModelStore.getDownloadedModelName(context)) }
+    var listVersion by remember { mutableStateOf(0) }
+    val models = remember(listVersion) { LocalModelStore.getModels(context) }
+    val activeId = remember(listVersion) { LocalModelStore.getActiveModelId(context) }
+
     var isDownloading by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf(0f) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
@@ -138,9 +145,9 @@ private fun GgufSection(context: Context, scope: kotlinx.coroutines.CoroutineSco
                 try {
                     val name = queryFileName(context, uri) ?: "model_lokal.gguf"
                     val destFile = copyUriToAppStorage(context, uri, name)
-                    LocalModelStore.setDownloadedModel(context, destFile.absolutePath, name)
-                    downloadedName = name
-                    statusMessage = "Model \"$name\" berhasil diimport"
+                    LocalModelStore.addModel(context, name, destFile.absolutePath)
+                    listVersion++
+                    statusMessage = "Model \"$name\" berhasil diimport & dijadikan aktif"
                 } catch (e: Exception) {
                     statusMessage = "Gagal import: ${e.message}"
                 } finally {
@@ -160,10 +167,10 @@ private fun GgufSection(context: Context, scope: kotlinx.coroutines.CoroutineSco
         statusMessage = null
         scope.launch {
             try {
-                val file = ModelDownloader.download(context, url, fileName) { p -> progress = p }
-                LocalModelStore.setDownloadedModel(context, file.absolutePath, name)
-                downloadedName = name
-                statusMessage = "Model \"$name\" berhasil didownload"
+                val file = ModelDownloader.download(context, url, "${System.currentTimeMillis()}_$fileName") { p -> progress = p }
+                LocalModelStore.addModel(context, name, file.absolutePath)
+                listVersion++
+                statusMessage = "Model \"$name\" berhasil didownload & dijadikan aktif"
             } catch (e: Exception) {
                 statusMessage = "Gagal download: ${e.message}"
             } finally {
@@ -172,7 +179,42 @@ private fun GgufSection(context: Context, scope: kotlinx.coroutines.CoroutineSco
         }
     }
 
-    Text("Status: ${downloadedName ?: "Belum ada model"}", style = MaterialTheme.typography.bodyMedium)
+    Text("Model Tersimpan", style = MaterialTheme.typography.titleMedium)
+    Spacer(modifier = Modifier.height(8.dp))
+    if (models.isEmpty()) {
+        Text("Belum ada model GGUF.", style = MaterialTheme.typography.bodySmall)
+    } else {
+        models.forEach { model ->
+            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            LocalModelStore.setActiveModelId(context, model.id)
+                            listVersion++
+                        }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        if (model.id == activeId) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
+                        contentDescription = "Aktif",
+                        tint = if (model.id == activeId) MaterialTheme.colorScheme.primary else Color.Gray
+                    )
+                    Text(model.name, modifier = Modifier.weight(1f).padding(start = 8.dp))
+                    IconButton(onClick = {
+                        LocalModelStore.removeModel(context, model.id)
+                        listVersion++
+                    }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Hapus")
+                    }
+                }
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(20.dp))
+    HorizontalDivider()
     Spacer(modifier = Modifier.height(16.dp))
 
     Text("Import File Lokal", style = MaterialTheme.typography.titleMedium)
@@ -245,15 +287,15 @@ private fun GgufSection(context: Context, scope: kotlinx.coroutines.CoroutineSco
     HorizontalDivider()
     Spacer(modifier = Modifier.height(16.dp))
 
-    Text("Tes Model", style = MaterialTheme.typography.titleMedium)
+    Text("Tes Model Aktif", style = MaterialTheme.typography.titleMedium)
     Spacer(modifier = Modifier.height(8.dp))
     OutlinedTextField(value = testPrompt, onValueChange = { testPrompt = it }, label = { Text("Ketik pertanyaan buat tes") }, modifier = Modifier.fillMaxWidth())
     Spacer(modifier = Modifier.height(8.dp))
     Button(
         onClick = {
-            val path = LocalModelStore.getDownloadedModelPath(context)
+            val path = LocalModelStore.getActiveModelPath(context)
             if (path == null) {
-                testResult = "Download atau import model dulu di atas."
+                testResult = "Belum ada model aktif. Download/import dulu, atau pilih salah satu di daftar."
                 return@Button
             }
             isTesting = true
@@ -284,7 +326,10 @@ private fun GgufSection(context: Context, scope: kotlinx.coroutines.CoroutineSco
 
 @Composable
 private fun LiteRtSection(context: Context, scope: kotlinx.coroutines.CoroutineScope) {
-    var downloadedName by remember { mutableStateOf(LiteRtModelStore.getDownloadedModelName(context)) }
+    var listVersion by remember { mutableStateOf(0) }
+    val models = remember(listVersion) { LiteRtModelStore.getModels(context) }
+    val activeId = remember(listVersion) { LiteRtModelStore.getActiveModelId(context) }
+
     var isDownloading by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf(0f) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
@@ -303,9 +348,9 @@ private fun LiteRtSection(context: Context, scope: kotlinx.coroutines.CoroutineS
                 try {
                     val name = queryFileName(context, uri) ?: "model_lokal.litertlm"
                     val destFile = copyUriToAppStorage(context, uri, name)
-                    LiteRtModelStore.setDownloadedModel(context, destFile.absolutePath, name)
-                    downloadedName = name
-                    statusMessage = "Model \"$name\" berhasil diimport"
+                    LiteRtModelStore.addModel(context, name, destFile.absolutePath)
+                    listVersion++
+                    statusMessage = "Model \"$name\" berhasil diimport & dijadikan aktif"
                 } catch (e: Exception) {
                     statusMessage = "Gagal import: ${e.message}"
                 } finally {
@@ -325,10 +370,10 @@ private fun LiteRtSection(context: Context, scope: kotlinx.coroutines.CoroutineS
         statusMessage = null
         scope.launch {
             try {
-                val file = ModelDownloader.download(context, url, fileName) { p -> progress = p }
-                LiteRtModelStore.setDownloadedModel(context, file.absolutePath, name)
-                downloadedName = name
-                statusMessage = "Model \"$name\" berhasil didownload"
+                val file = ModelDownloader.download(context, url, "${System.currentTimeMillis()}_$fileName") { p -> progress = p }
+                LiteRtModelStore.addModel(context, name, file.absolutePath)
+                listVersion++
+                statusMessage = "Model \"$name\" berhasil didownload & dijadikan aktif"
             } catch (e: Exception) {
                 statusMessage = "Gagal download: ${e.message}"
             } finally {
@@ -337,7 +382,40 @@ private fun LiteRtSection(context: Context, scope: kotlinx.coroutines.CoroutineS
         }
     }
 
-    Text("Status: ${downloadedName ?: "Belum ada model"}", style = MaterialTheme.typography.bodyMedium)
+    Text("Model Tersimpan", style = MaterialTheme.typography.titleMedium)
+    Spacer(modifier = Modifier.height(8.dp))
+    if (models.isEmpty()) {
+        Text("Belum ada model LiteRT.", style = MaterialTheme.typography.bodySmall)
+    } else {
+        models.forEach { model ->
+            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            LiteRtModelStore.setActiveModelId(context, model.id)
+                            listVersion++
+                        }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        if (model.id == activeId) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
+                        contentDescription = "Aktif",
+                        tint = if (model.id == activeId) MaterialTheme.colorScheme.primary else Color.Gray
+                    )
+                    Text(model.name, modifier = Modifier.weight(1f).padding(start = 8.dp))
+                    IconButton(onClick = {
+                        LiteRtModelStore.removeModel(context, model.id)
+                        listVersion++
+                    }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Hapus")
+                    }
+                }
+            }
+        }
+    }
+
     Spacer(modifier = Modifier.height(8.dp))
     Text(
         "Model LiteRT-LM (.litertlm) didownload dari huggingface.co/litert-community. " +
@@ -345,7 +423,10 @@ private fun LiteRtSection(context: Context, scope: kotlinx.coroutines.CoroutineS
         style = MaterialTheme.typography.bodySmall
     )
 
+    Spacer(modifier = Modifier.height(20.dp))
+    HorizontalDivider()
     Spacer(modifier = Modifier.height(16.dp))
+
     Text("Import File Lokal", style = MaterialTheme.typography.titleMedium)
     Spacer(modifier = Modifier.height(8.dp))
     Card(
@@ -399,15 +480,15 @@ private fun LiteRtSection(context: Context, scope: kotlinx.coroutines.CoroutineS
     HorizontalDivider()
     Spacer(modifier = Modifier.height(16.dp))
 
-    Text("Tes Model", style = MaterialTheme.typography.titleMedium)
+    Text("Tes Model Aktif", style = MaterialTheme.typography.titleMedium)
     Spacer(modifier = Modifier.height(8.dp))
     OutlinedTextField(value = testPrompt, onValueChange = { testPrompt = it }, label = { Text("Ketik pertanyaan buat tes") }, modifier = Modifier.fillMaxWidth())
     Spacer(modifier = Modifier.height(8.dp))
     Button(
         onClick = {
-            val path = LiteRtModelStore.getDownloadedModelPath(context)
+            val path = LiteRtModelStore.getActiveModelPath(context)
             if (path == null) {
-                testResult = "Download atau import model dulu di atas."
+                testResult = "Belum ada model aktif. Download/import dulu, atau pilih salah satu di daftar."
                 return@Button
             }
             isTesting = true
@@ -449,7 +530,7 @@ private fun queryFileName(context: Context, uri: Uri): String? {
 private suspend fun copyUriToAppStorage(context: Context, uri: Uri, fileName: String): File =
     withContext(Dispatchers.IO) {
         val destDir = context.getExternalFilesDir(null) ?: context.filesDir
-        val destFile = File(destDir, fileName)
+        val destFile = File(destDir, "${System.currentTimeMillis()}_$fileName")
         context.contentResolver.openInputStream(uri)?.use { input ->
             FileOutputStream(destFile).use { output ->
                 input.copyTo(output, bufferSize = 65536)

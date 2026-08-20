@@ -41,4 +41,14 @@ object LocalAiSettingsStore {
 
     fun isLitertGpuEnabled(context: Context) = prefs(context).getBoolean("litert_gpu", false)
     fun setLitertGpuEnabled(context: Context, v: Boolean) { prefs(context).edit().putBoolean("litert_gpu", v).apply() }
+
+    fun isGgufBatterySaverEnabled(context: Context) = prefs(context).getBoolean("gguf_battery_saver", false)
+    fun setGgufBatterySaverEnabled(context: Context, v: Boolean) { prefs(context).edit().putBoolean("gguf_battery_saver", v).apply() }
+    fun getGgufBatterySaverThreshold(context: Context) = prefs(context).getInt("gguf_battery_saver_threshold", 20)
+    fun setGgufBatterySaverThreshold(context: Context, v: Int) { prefs(context).edit().putInt("gguf_battery_saver_threshold", v).apply() }
+
+    fun isLitertBatterySaverEnabled(context: Context) = prefs(context).getBoolean("litert_battery_saver", false)
+    fun setLitertBatterySaverEnabled(context: Context, v: Boolean) { prefs(context).edit().putBoolean("litert_battery_saver", v).apply() }
+    fun getLitertBatterySaverThreshold(context: Context) = prefs(context).getInt("litert_battery_saver_threshold", 20)
+    fun setLitertBatterySaverThreshold(context: Context, v: Int) { prefs(context).edit().putInt("litert_battery_saver_threshold", v).apply() }
 }

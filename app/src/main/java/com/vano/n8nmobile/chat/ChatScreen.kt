@@ -45,12 +45,14 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,13 +64,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -107,7 +110,8 @@ fun ChatScreen(
     onOpenDrawer: () -> Unit,
     onNewChat: () -> Unit,
     onMessagesChanged: () -> Unit,
-    onOpenAiProviders: () -> Unit
+    onOpenAiProviders: () -> Unit,
+    onOpenCompare: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -118,6 +122,10 @@ fun ChatScreen(
     var thinkingEnabled by remember { mutableStateOf(ChatModeStore.isThinkingEnabled(context)) }
     var modeMenuExpanded by remember { mutableStateOf(false) }
     var animatedUpTo by remember { mutableStateOf(messages.size - 1) }
+
+    var templateMenuExpanded by remember { mutableStateOf(false) }
+    var showSaveTemplateDialog by remember { mutableStateOf(false) }
+    var templateListVersion by remember { mutableStateOf(0) }
 
     val ttsRef = remember { mutableStateOf<TextToSpeech?>(null) }
     DisposableEffect(Unit) {
@@ -290,6 +298,7 @@ fun ChatScreen(
                         onClick = { thinkingEnabled = !thinkingEnabled; ChatModeStore.setThinkingEnabled(context, thinkingEnabled) }
                     )
                     DropdownMenuItem(text = { Text("⚙ Kelola Provider AI") }, onClick = { modeMenuExpanded = false; onOpenAiProviders() })
+                    DropdownMenuItem(text = { Text("🆚 Bandingkan Provider") }, onClick = { modeMenuExpanded = false; onOpenCompare() })
                 }
             }
 
@@ -424,6 +433,50 @@ fun ChatScreen(
 
             Spacer(modifier = Modifier.width(6.dp))
 
+            Box {
+                Box(
+                    modifier = Modifier.size(40.dp).clip(CircleShape).background(AiwaColors.Pink).clickable { templateMenuExpanded = true },
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Default.Description, contentDescription = "Template Prompt", tint = Color.White) }
+                DropdownMenu(expanded = templateMenuExpanded, onDismissRequest = { templateMenuExpanded = false }) {
+                    val templates = remember(templateListVersion) { PromptTemplateStore.getTemplates(context) }
+                    if (templates.isEmpty()) {
+                        DropdownMenuItem(text = { Text("Belum ada template") }, onClick = {}, enabled = false)
+                    } else {
+                        templates.forEach { template ->
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(template.name, modifier = Modifier.weight(1f))
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Hapus template",
+                                            modifier = Modifier.size(16.dp).clickable {
+                                                PromptTemplateStore.remove(context, template.id)
+                                                templateListVersion++
+                                            }
+                                        )
+                                    }
+                                },
+                                onClick = { input = template.content; templateMenuExpanded = false }
+                            )
+                        }
+                    }
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text("+ Simpan Input sebagai Template") },
+                        onClick = { templateMenuExpanded = false; showSaveTemplateDialog = true },
+                        enabled = input.isNotBlank()
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
             OutlinedTextField(
                 value = input, onValueChange = { input = it },
                 modifier = Modifier.weight(1f).heightIn(max = 120.dp),
@@ -437,6 +490,27 @@ fun ChatScreen(
                 contentAlignment = Alignment.Center
             ) { Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Color.White) }
         }
+    }
+
+    if (showSaveTemplateDialog) {
+        var templateName by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showSaveTemplateDialog = false },
+            title = { Text("Simpan Template") },
+            text = {
+                OutlinedTextField(value = templateName, onValueChange = { templateName = it }, label = { Text("Nama template") }, modifier = Modifier.fillMaxWidth())
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (templateName.isNotBlank()) {
+                        PromptTemplateStore.add(context, templateName.trim(), input)
+                        templateListVersion++
+                    }
+                    showSaveTemplateDialog = false
+                }) { Text("Simpan") }
+            },
+            dismissButton = { TextButton(onClick = { showSaveTemplateDialog = false }) { Text("Batal") } }
+        )
     }
 }
 

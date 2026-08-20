@@ -108,6 +108,9 @@ object AutoReplyStore {
     fun getBusinessHoursEnd(context: Context): Int = prefs(context).getInt(KEY_BH_END, 17)
     fun setBusinessHoursEnd(context: Context, v: Int) { prefs(context).edit().putInt(KEY_BH_END, v).apply() }
 
+    fun isPreviewModeEnabled(context: Context): Boolean = prefs(context).getBoolean("preview_mode_enabled", false)
+    fun setPreviewModeEnabled(context: Context, v: Boolean) { prefs(context).edit().putBoolean("preview_mode_enabled", v).apply() }
+
     // "auto", "local_gguf", "local_litert", "online"
     fun getAiMode(context: Context): String = prefs(context).getString(KEY_AI_MODE, "auto") ?: "auto"
 

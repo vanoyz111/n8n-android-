@@ -15,8 +15,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -72,7 +72,7 @@ private val aiModeOptions = listOf(
 )
 
 @Composable
-fun AutoReplyScreen(onBack: () -> Unit) {
+fun AutoReplyScreen(onBack: () -> Unit, onOpenPendingReplies: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -84,17 +84,20 @@ fun AutoReplyScreen(onBack: () -> Unit) {
     var savedMessage by remember { mutableStateOf<String?>(null) }
 
     var aiMode by remember { mutableStateOf(AutoReplyStore.getAiMode(context)) }
+    var previewMode by remember { mutableStateOf(AutoReplyStore.isPreviewModeEnabled(context)) }
+    var ttsReadout by remember { mutableStateOf(AutoReplyStore.isTtsReadoutEnabled(context)) }
 
     var filterMode by remember { mutableStateOf(AutoReplyStore.getContactFilterMode(context)) }
     var groupEnabled by remember { mutableStateOf(AutoReplyStore.isGroupEnabled(context)) }
     var contactList by remember { mutableStateOf(AutoReplyStore.getContactList(context)) }
     var showAddContactDialog by remember { mutableStateOf(false) }
     var showDeviceContactsDialog by remember { mutableStateOf(false) }
+    var deviceContacts by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isLoadingContacts by remember { mutableStateOf(false) }
+
     var businessHoursEnabled by remember { mutableStateOf(AutoReplyStore.isBusinessHoursEnabled(context)) }
     var bhStart by remember { mutableStateOf(AutoReplyStore.getBusinessHoursStart(context).toString()) }
     var bhEnd by remember { mutableStateOf(AutoReplyStore.getBusinessHoursEnd(context).toString()) }
-    var deviceContacts by remember { mutableStateOf<List<String>>(emptyList()) }
-    var isLoadingContacts by remember { mutableStateOf(false) }
 
     val contactsPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
@@ -157,10 +160,7 @@ fun AutoReplyScreen(onBack: () -> Unit) {
 
         Text("Provider AI buat Auto-Reply", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            "Ini terpisah dari pengaturan AI di layar Chat.",
-            style = MaterialTheme.typography.bodySmall
-        )
+        Text("Ini terpisah dari pengaturan AI di layar Chat.", style = MaterialTheme.typography.bodySmall)
         Spacer(modifier = Modifier.height(8.dp))
         aiModeOptions.forEach { option ->
             Row(
@@ -168,21 +168,12 @@ fun AutoReplyScreen(onBack: () -> Unit) {
                     .fillMaxWidth()
                     .selectable(
                         selected = aiMode == option.value,
-                        onClick = {
-                            aiMode = option.value
-                            AutoReplyStore.setAiMode(context, option.value)
-                        }
+                        onClick = { aiMode = option.value; AutoReplyStore.setAiMode(context, option.value) }
                     )
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RadioButton(
-                    selected = aiMode == option.value,
-                    onClick = {
-                        aiMode = option.value
-                        AutoReplyStore.setAiMode(context, option.value)
-                    }
-                )
+                RadioButton(selected = aiMode == option.value, onClick = { aiMode = option.value; AutoReplyStore.setAiMode(context, option.value) })
                 Text(option.label)
             }
         }
@@ -200,21 +191,12 @@ fun AutoReplyScreen(onBack: () -> Unit) {
                     .fillMaxWidth()
                     .selectable(
                         selected = filterMode == option.value,
-                        onClick = {
-                            filterMode = option.value
-                            AutoReplyStore.setContactFilterMode(context, option.value)
-                        }
+                        onClick = { filterMode = option.value; AutoReplyStore.setContactFilterMode(context, option.value) }
                     )
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RadioButton(
-                    selected = filterMode == option.value,
-                    onClick = {
-                        filterMode = option.value
-                        AutoReplyStore.setContactFilterMode(context, option.value)
-                    }
-                )
+                RadioButton(selected = filterMode == option.value, onClick = { filterMode = option.value; AutoReplyStore.setContactFilterMode(context, option.value) })
                 Text(option.label)
             }
         }
@@ -223,19 +205,10 @@ fun AutoReplyScreen(onBack: () -> Unit) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .selectable(
-                    selected = groupEnabled,
-                    onClick = {
-                        groupEnabled = !groupEnabled
-                        AutoReplyStore.setGroupEnabled(context, groupEnabled)
-                    }
-                ),
+                .selectable(selected = groupEnabled, onClick = { groupEnabled = !groupEnabled; AutoReplyStore.setGroupEnabled(context, groupEnabled) }),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Checkbox(checked = groupEnabled, onCheckedChange = {
-                groupEnabled = it
-                AutoReplyStore.setGroupEnabled(context, it)
-            })
+            Checkbox(checked = groupEnabled, onCheckedChange = { groupEnabled = it; AutoReplyStore.setGroupEnabled(context, it) })
             Text("Aktifkan Grup")
         }
 
@@ -244,16 +217,13 @@ fun AutoReplyScreen(onBack: () -> Unit) {
             Text("Daftar Kontak", style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(8.dp))
             Row {
-                Button(onClick = { showAddContactDialog = true }) {
-                    Text("+ Manual")
-                }
+                Button(onClick = { showAddContactDialog = true }) { Text("+ Manual") }
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(onClick = { contactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS) }) {
                     Text(if (isLoadingContacts) "Memuat..." else "Dari Kontak HP")
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
-
             if (contactList.isEmpty()) {
                 Text("Belum ada kontak.", style = MaterialTheme.typography.bodySmall)
             } else {
@@ -268,9 +238,7 @@ fun AutoReplyScreen(onBack: () -> Unit) {
                             val updated = contactList.filterNot { it == contact }
                             contactList = updated
                             AutoReplyStore.setContactList(context, updated)
-                        }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Hapus kontak")
-                        }
+                        }) { Icon(Icons.Default.Delete, contentDescription = "Hapus kontak") }
                     }
                 }
             }
@@ -283,10 +251,7 @@ fun AutoReplyScreen(onBack: () -> Unit) {
         Text("Jam Kerja", style = MaterialTheme.typography.titleMedium)
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
             Text("Cuma balas otomatis di jam tertentu", modifier = Modifier.weight(1f))
-            Switch(checked = businessHoursEnabled, onCheckedChange = {
-                businessHoursEnabled = it
-                AutoReplyStore.setBusinessHoursEnabled(context, it)
-            })
+            Switch(checked = businessHoursEnabled, onCheckedChange = { businessHoursEnabled = it; AutoReplyStore.setBusinessHoursEnabled(context, it) })
         }
         if (businessHoursEnabled) {
             Row(modifier = Modifier.padding(top = 8.dp)) {
@@ -312,27 +277,31 @@ fun AutoReplyScreen(onBack: () -> Unit) {
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Aktifkan Auto-Reply", modifier = Modifier.weight(1f))
-            Switch(checked = enabled, onCheckedChange = {
-                enabled = it
-                AutoReplyStore.setEnabled(context, it)
-            })
+            Switch(checked = enabled, onCheckedChange = { enabled = it; AutoReplyStore.setEnabled(context, it) })
         }
 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
             Text("Fallback ke AI kalau gak ada keyword cocok", modifier = Modifier.weight(1f))
-            Switch(checked = aiFallback, onCheckedChange = {
-                aiFallback = it
-                AutoReplyStore.setAiFallbackEnabled(context, it)
-            })
+            Switch(checked = aiFallback, onCheckedChange = { aiFallback = it; AutoReplyStore.setAiFallbackEnabled(context, it) })
         }
 
-        var ttsReadout by remember { mutableStateOf(AutoReplyStore.isTtsReadoutEnabled(context)) }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Mode Percobaan (Preview)")
+                Text("Balasan gak langsung kekirim, direview dulu di Aiwa", style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(checked = previewMode, onCheckedChange = { previewMode = it; AutoReplyStore.setPreviewModeEnabled(context, it) })
+        }
+        if (previewMode) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Button(onClick = onOpenPendingReplies) {
+                Text("Buka Pratinjau Balasan (${PendingReplyStore.count()})")
+            }
+        }
+
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
             Text("Bacakan Notifikasi (TTS) — dibaca lokal di HP, BUKAN dikirim sebagai voice note", modifier = Modifier.weight(1f))
-            Switch(checked = ttsReadout, onCheckedChange = {
-                ttsReadout = it
-                AutoReplyStore.setTtsReadoutEnabled(context, it)
-            })
+            Switch(checked = ttsReadout, onCheckedChange = { ttsReadout = it; AutoReplyStore.setTtsReadoutEnabled(context, it) })
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -348,9 +317,7 @@ fun AutoReplyScreen(onBack: () -> Unit) {
         Button(onClick = {
             AutoReplyStore.setPersonaPrompt(context, personaPrompt)
             savedMessage = "Instruksi AI disimpan"
-        }) {
-            Text("Simpan Instruksi AI")
-        }
+        }) { Text("Simpan Instruksi AI") }
         savedMessage?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
         }
@@ -361,13 +328,10 @@ fun AutoReplyScreen(onBack: () -> Unit) {
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Aturan Keyword", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            Button(onClick = { showAddRuleDialog = true }) {
-                Text("+ Aturan")
-            }
+            Button(onClick = { showAddRuleDialog = true }) { Text("+ Aturan") }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
-
         if (rules.isEmpty()) {
             Text("Belum ada aturan keyword.", style = MaterialTheme.typography.bodySmall)
         } else {
@@ -385,9 +349,7 @@ fun AutoReplyScreen(onBack: () -> Unit) {
                             val updated = rules.filterNot { it.id == rule.id }
                             rules = updated
                             AutoReplyStore.setRules(context, updated)
-                        }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Hapus aturan")
-                        }
+                        }) { Icon(Icons.Default.Delete, contentDescription = "Hapus aturan") }
                     }
                 }
             }
@@ -404,20 +366,9 @@ fun AutoReplyScreen(onBack: () -> Unit) {
             title = { Text("Aturan Baru") },
             text = {
                 Column {
-                    OutlinedTextField(
-                        value = keyword,
-                        onValueChange = { keyword = it },
-                        label = { Text("Keyword (contoh: harga)") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    OutlinedTextField(value = keyword, onValueChange = { keyword = it }, label = { Text("Keyword (contoh: harga)") }, modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = reply,
-                        onValueChange = { reply = it },
-                        label = { Text("Balasan otomatis") },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 2
-                    )
+                    OutlinedTextField(value = reply, onValueChange = { reply = it }, label = { Text("Balasan otomatis") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
                 }
             },
             confirmButton = {
@@ -431,9 +382,7 @@ fun AutoReplyScreen(onBack: () -> Unit) {
                     showAddRuleDialog = false
                 }) { Text("Tambah") }
             },
-            dismissButton = {
-                TextButton(onClick = { showAddRuleDialog = false }) { Text("Batal") }
-            }
+            dismissButton = { TextButton(onClick = { showAddRuleDialog = false }) { Text("Batal") } }
         )
     }
 
@@ -443,12 +392,7 @@ fun AutoReplyScreen(onBack: () -> Unit) {
             onDismissRequest = { showAddContactDialog = false },
             title = { Text("Tambah Kontak Manual") },
             text = {
-                OutlinedTextField(
-                    value = contactName,
-                    onValueChange = { contactName = it },
-                    label = { Text("Nama persis seperti di WhatsApp") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                OutlinedTextField(value = contactName, onValueChange = { contactName = it }, label = { Text("Nama persis seperti di WhatsApp") }, modifier = Modifier.fillMaxWidth())
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -460,9 +404,7 @@ fun AutoReplyScreen(onBack: () -> Unit) {
                     showAddContactDialog = false
                 }) { Text("Tambah") }
             },
-            dismissButton = {
-                TextButton(onClick = { showAddContactDialog = false }) { Text("Batal") }
-            }
+            dismissButton = { TextButton(onClick = { showAddContactDialog = false }) { Text("Batal") } }
         )
     }
 
@@ -474,12 +416,7 @@ fun AutoReplyScreen(onBack: () -> Unit) {
             title = { Text("Pilih dari Kontak HP") },
             text = {
                 Column {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        label = { Text("Cari kontak") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, label = { Text("Cari kontak") }, modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(8.dp))
                     LazyColumn(modifier = Modifier.height(320.dp)) {
                         items(filtered) { name ->
@@ -508,9 +445,7 @@ fun AutoReplyScreen(onBack: () -> Unit) {
                     }
                 }
             },
-            confirmButton = {
-                TextButton(onClick = { showDeviceContactsDialog = false }) { Text("Selesai") }
-            }
+            confirmButton = { TextButton(onClick = { showDeviceContactsDialog = false }) { Text("Selesai") } }
         )
     }
 }

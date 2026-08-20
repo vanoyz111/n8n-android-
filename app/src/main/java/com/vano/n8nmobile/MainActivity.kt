@@ -81,6 +81,8 @@ import com.vano.n8nmobile.backup.BackupRestoreScreen
 import com.vano.n8nmobile.health.HealthDashboardScreen
 import com.vano.n8nmobile.chat.GroupChatScreen
 import com.vano.n8nmobile.dashboard.DashboardScreen
+import com.vano.n8nmobile.chat.CompareScreen
+import com.vano.n8nmobile.autoreply.PendingReplyScreen
 import androidx.compose.material.icons.filled.Groups
 import com.vano.n8nmobile.canvas.FlowScheduler
 import com.vano.n8nmobile.server.HealthCheckScheduler
@@ -95,7 +97,7 @@ import com.vano.n8nmobile.ui.AiwaThemeStore
 import com.vano.n8nmobile.ui.ThemeCustomizationScreen
 import kotlinx.coroutines.launch
 
-private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN, AI_PROVIDERS, LOCAL_SERVER, APP_LOCK, BACKUP, HEALTH_DASHBOARD, GROUP_CHAT, DASHBOARD }
+private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN, AI_PROVIDERS, LOCAL_SERVER, APP_LOCK, BACKUP, HEALTH_DASHBOARD, GROUP_CHAT, DASHBOARD, COMPARE, PENDING_REPLY }
 
 class MainActivity : FragmentActivity() {
 
@@ -339,7 +341,8 @@ class MainActivity : FragmentActivity() {
                                         conversationsList = ChatStore.loadAll(context)
                                     }
                                 },
-                                onOpenAiProviders = { currentScreen = AppScreen.AI_PROVIDERS }
+                                onOpenAiProviders = { currentScreen = AppScreen.AI_PROVIDERS },
+                                onOpenCompare = { currentScreen = AppScreen.COMPARE }
                             )
                             AppScreen.FLOW -> WorkflowCanvasScreen(
                                 onOpenDrawer = { scope.launch { drawerState.open() } }
@@ -383,7 +386,14 @@ class MainActivity : FragmentActivity() {
                                 onBack = { currentScreen = AppScreen.SETTINGS }
                             )
                             AppScreen.AUTOREPLY -> AutoReplyScreen(
-                                onBack = { currentScreen = AppScreen.SETTINGS }
+                                onBack = { currentScreen = AppScreen.SETTINGS },
+                                onOpenPendingReplies = { currentScreen = AppScreen.PENDING_REPLY }
+                            )
+                            AppScreen.COMPARE -> CompareScreen(
+                                onBack = { currentScreen = AppScreen.CHAT }
+                            )
+                            AppScreen.PENDING_REPLY -> PendingReplyScreen(
+                                onBack = { currentScreen = AppScreen.AUTOREPLY }
                             )
                             AppScreen.LOCAL_AI -> LocalModelScreen(
                                 onBack = { currentScreen = AppScreen.SETTINGS },

@@ -143,7 +143,7 @@ class WhatsAppNotificationListener : NotificationListenerService() {
         }
 
         if (matchedRule != null) {
-            trySendReply(replyAction, matchedRule.reply, sender)
+            trySendReply(replyAction, matchedRule.reply, sender, messageText)
             return
         }
 
@@ -162,7 +162,7 @@ class WhatsAppNotificationListener : NotificationListenerService() {
                         AppLog.add("AUTOREPLY_ERROR", "AI gagal, TIDAK dikirim ke WhatsApp: ${reply.take(100)}")
                         releaseSender(sender, applyCooldown = false)
                     } else {
-                        trySendReply(replyAction, reply, sender)
+                        trySendReply(replyAction, reply, sender, messageText)
                     }
                 } catch (e: Exception) {
                     AppLog.add("AUTOREPLY_ERROR", "Exception, TIDAK dikirim ke WhatsApp: ${e.message}")
@@ -193,7 +193,19 @@ class WhatsAppNotificationListener : NotificationListenerService() {
         }
     }
 
-    private fun trySendReply(action: Notification.Action, replyText: String, sender: String) {
+    private fun trySendReply(action: Notification.Action, replyText: String, sender: String, originalMessage: String) {
+        if (AutoReplyStore.isPreviewModeEnabled(applicationContext)) {
+            PendingReplyStore.add(sender, originalMessage, replyText, action)
+            com.vano.n8nmobile.server.HealthCheckNotifier.notify(
+                applicationContext,
+                "Balasan menunggu review",
+                "Balasan buat $sender siap dikirim. Buka Aiwa > Auto-Reply > Pratinjau Balasan."
+            )
+            AppLog.add("AUTOREPLY", "Balasan buat $sender masuk antrian review (mode percobaan aktif)")
+            releaseSender(sender, applyCooldown = true)
+            return
+        }
+
         val tripped = synchronized(lock) {
             val now = System.currentTimeMillis()
             recentReplyTimestamps.removeAll { now - it > CIRCUIT_BREAKER_WINDOW_MS }
@@ -227,9 +239,6 @@ class WhatsAppNotificationListener : NotificationListenerService() {
             RemoteInput.addResultsToIntent(remoteInputs, intent, bundle)
             action.actionIntent.send(applicationContext, 0, intent)
             AppLog.add("AUTOREPLY", "Balas ke $sender: ${replyText.take(60)}")
-            if (AutoReplyStore.isTtsReadoutEnabled(applicationContext)) {
-                AutoReplyTts.speak(applicationContext, "Pesan dari $sender. Balasan otomatis: $replyText")
-            }
         } catch (e: PendingIntent.CanceledException) {
             AppLog.add("AUTOREPLY_ERROR", "Gagal kirim balasan: ${e.message}")
         } finally {

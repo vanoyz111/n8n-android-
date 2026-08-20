@@ -19,12 +19,21 @@ object LiteRtRuntime {
 
     suspend fun ensureLoaded(context: Context, modelPath: String, systemPrompt: String): Boolean =
         withContext(Dispatchers.IO) {
-            val useGpuPreference = LocalAiSettingsStore.isLitertGpuEnabled(context)
+            var useGpuPreference = LocalAiSettingsStore.isLitertGpuEnabled(context)
             val temperature = LocalAiSettingsStore.getLitertTemperature(context)
             val topP = LocalAiSettingsStore.getLitertTopP(context)
             val topK = LocalAiSettingsStore.getLitertTopK(context)
-            val signature = "$modelPath|$useGpuPreference|$temperature|$topP|$topK|$systemPrompt"
 
+            if (LocalAiSettingsStore.isLitertBatterySaverEnabled(context)) {
+                val batteryPct = BatteryHelper.getBatteryPercent(context)
+                val threshold = LocalAiSettingsStore.getLitertBatterySaverThreshold(context)
+                if (batteryPct in 0..threshold && useGpuPreference) {
+                    AppLog.add("BATTERY_SAVER", "Baterai $batteryPct% <= $threshold%, paksa CPU buat AI Lokal LiteRT")
+                    useGpuPreference = false
+                }
+            }
+
+            val signature = "$modelPath|$useGpuPreference|$temperature|$topP|$topK|$systemPrompt"
             if (loadedSignature == signature && conversation != null) return@withContext true
 
             val samplerConfig = SamplerConfig(topK = topK, topP = topP.toDouble(), temperature = temperature.toDouble())
@@ -51,7 +60,7 @@ object LiteRtRuntime {
 
                     engine = newEngine
                     conversation = newConversation
-                    loadedSignature = signature
+                    loadedSignature = "$modelPath|$useGpu|$temperature|$topP|$topK|$systemPrompt"
                     AppLog.add("LITERT", "Model berhasil dimuat (GPU=$useGpu)")
                     true
                 } catch (e: Throwable) {

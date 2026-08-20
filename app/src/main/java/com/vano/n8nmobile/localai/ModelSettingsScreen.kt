@@ -1,7 +1,6 @@
 package com.vano.n8nmobile.localai
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +21,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -90,6 +90,8 @@ private fun GgufSettingsSection(context: android.content.Context) {
     var contextLength by remember { mutableStateOf(LocalAiSettingsStore.getGgufContextLength(context).toFloat()) }
     var gpuLayers by remember { mutableStateOf(LocalAiSettingsStore.getGgufGpuLayers(context).toFloat()) }
     var threads by remember { mutableStateOf(LocalAiSettingsStore.getGgufThreads(context).toFloat()) }
+    var batterySaver by remember { mutableStateOf(LocalAiSettingsStore.isGgufBatterySaverEnabled(context)) }
+    var batteryThreshold by remember { mutableStateOf(LocalAiSettingsStore.getGgufBatterySaverThreshold(context).toFloat()) }
 
     Text("Atur cara model GGUF menjawab.", style = MaterialTheme.typography.bodySmall)
     Spacer(modifier = Modifier.height(16.dp))
@@ -120,6 +122,22 @@ private fun GgufSettingsSection(context: android.content.Context) {
         threads = it; LocalAiSettingsStore.setGgufThreads(context, it.toInt())
     }
 
+    Spacer(modifier = Modifier.height(8.dp))
+    HorizontalDivider()
+    Spacer(modifier = Modifier.height(12.dp))
+    Text("Mode Hemat Baterai", style = MaterialTheme.typography.titleMedium)
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+        Text("Otomatis kurangi beban kalau baterai rendah", modifier = Modifier.weight(1f))
+        Switch(checked = batterySaver, onCheckedChange = {
+            batterySaver = it; LocalAiSettingsStore.setGgufBatterySaverEnabled(context, it)
+        })
+    }
+    if (batterySaver) {
+        SettingSlider("Ambang Baterai", "Aktif kalau baterai di bawah persen ini", batteryThreshold, "${batteryThreshold.toInt()}%", 5f, 50f) {
+            batteryThreshold = it; LocalAiSettingsStore.setGgufBatterySaverThreshold(context, it.toInt())
+        }
+    }
+
     Spacer(modifier = Modifier.height(12.dp))
     OutlinedButton(onClick = {
         LocalAiSettingsStore.setGgufTemperature(context, 0.7f); temperature = 0.7f
@@ -140,6 +158,8 @@ private fun LiteRtSettingsSection(context: android.content.Context) {
     var topP by remember { mutableStateOf(LocalAiSettingsStore.getLitertTopP(context)) }
     var topK by remember { mutableStateOf(LocalAiSettingsStore.getLitertTopK(context).toFloat()) }
     var useGpu by remember { mutableStateOf(LocalAiSettingsStore.isLitertGpuEnabled(context)) }
+    var batterySaver by remember { mutableStateOf(LocalAiSettingsStore.isLitertBatterySaverEnabled(context)) }
+    var batteryThreshold by remember { mutableStateOf(LocalAiSettingsStore.getLitertBatterySaverThreshold(context).toFloat()) }
 
     Text("Atur cara model LiteRT-LM menjawab.", style = MaterialTheme.typography.bodySmall)
     Spacer(modifier = Modifier.height(16.dp))
@@ -168,6 +188,22 @@ private fun LiteRtSettingsSection(context: android.content.Context) {
             onClick = { useGpu = true; LocalAiSettingsStore.setLitertGpuEnabled(context, true) },
             colors = if (useGpu) ButtonDefaults.buttonColors() else ButtonDefaults.outlinedButtonColors()
         ) { Text("GPU") }
+    }
+
+    Spacer(modifier = Modifier.height(20.dp))
+    HorizontalDivider()
+    Spacer(modifier = Modifier.height(12.dp))
+    Text("Mode Hemat Baterai", style = MaterialTheme.typography.titleMedium)
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+        Text("Paksa CPU kalau baterai rendah (hindari GPU boros daya)", modifier = Modifier.weight(1f))
+        Switch(checked = batterySaver, onCheckedChange = {
+            batterySaver = it; LocalAiSettingsStore.setLitertBatterySaverEnabled(context, it)
+        })
+    }
+    if (batterySaver) {
+        SettingSlider("Ambang Baterai", "Aktif kalau baterai di bawah persen ini", batteryThreshold, "${batteryThreshold.toInt()}%", 5f, 50f) {
+            batteryThreshold = it; LocalAiSettingsStore.setLitertBatterySaverThreshold(context, it.toInt())
+        }
     }
 
     Spacer(modifier = Modifier.height(20.dp))
