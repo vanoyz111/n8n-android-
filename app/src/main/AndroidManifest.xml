@@ -68,6 +68,7 @@
         </receiver>
         <receiver android:name=".canvas.FlowAlarmReceiver" android:exported="false" />
         <receiver android:name=".server.HealthCheckReceiver" android:exported="false" />
+        <receiver android:name=".backup.AutoBackupReceiver" android:exported="false" />
 
     </application>
 </manifest>

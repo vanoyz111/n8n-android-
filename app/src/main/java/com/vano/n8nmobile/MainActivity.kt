@@ -1,10 +1,11 @@
 package com.vano.n8nmobile
 
 import android.Manifest
+import android.content.ComponentName
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.content.Intent
-import androidx.fragment.app.FragmentActivity
+import android.service.notification.NotificationListenerService
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -26,22 +27,29 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Chat
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -49,7 +57,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -57,35 +64,31 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.vano.n8nmobile.canvas.CanvasEdge
-import com.vano.n8nmobile.canvas.CanvasNode
-import com.vano.n8nmobile.canvas.FlowStore
+import androidx.fragment.app.FragmentActivity
+import com.vano.n8nmobile.autoreply.AutoReplyScreen
+import com.vano.n8nmobile.autoreply.AutoReplyStore
+import com.vano.n8nmobile.autoreply.PendingReplyScreen
+import com.vano.n8nmobile.autoreply.WhatsAppNotificationListener
+import com.vano.n8nmobile.backup.AutoBackupScheduler
+import com.vano.n8nmobile.backup.BackupRestoreScreen
+import com.vano.n8nmobile.canvas.FlowScheduler
 import com.vano.n8nmobile.canvas.WorkflowCanvasScreen
 import com.vano.n8nmobile.chat.ChatMessage
 import com.vano.n8nmobile.chat.ChatScreen
 import com.vano.n8nmobile.chat.ChatStore
-import com.vano.n8nmobile.autoreply.AutoReplyScreen
-import com.vano.n8nmobile.autoreply.AutoReplyStore
-import com.vano.n8nmobile.autoreply.WhatsAppNotificationListener
-import android.content.ComponentName
-import android.service.notification.NotificationListenerService
+import com.vano.n8nmobile.chat.CompareScreen
+import com.vano.n8nmobile.chat.GroupChatScreen
+import com.vano.n8nmobile.dashboard.DashboardScreen
+import com.vano.n8nmobile.health.HealthDashboardScreen
+import com.vano.n8nmobile.imagegen.ImageGenScreen
 import com.vano.n8nmobile.localai.LocalModelScreen
 import com.vano.n8nmobile.localai.ModelSettingsScreen
-import com.vano.n8nmobile.imagegen.ImageGenScreen
-import com.vano.n8nmobile.settings.AiProvidersScreen
-import com.vano.n8nmobile.server.LocalServerScreen
 import com.vano.n8nmobile.security.AppLockScreen
 import com.vano.n8nmobile.security.AppLockSettingsScreen
 import com.vano.n8nmobile.security.AppLockStore
-import com.vano.n8nmobile.backup.BackupRestoreScreen
-import com.vano.n8nmobile.health.HealthDashboardScreen
-import com.vano.n8nmobile.chat.GroupChatScreen
-import com.vano.n8nmobile.dashboard.DashboardScreen
-import com.vano.n8nmobile.chat.CompareScreen
-import com.vano.n8nmobile.autoreply.PendingReplyScreen
-import androidx.compose.material.icons.filled.Groups
-import com.vano.n8nmobile.canvas.FlowScheduler
 import com.vano.n8nmobile.server.HealthCheckScheduler
+import com.vano.n8nmobile.server.LocalServerScreen
+import com.vano.n8nmobile.settings.AiProvidersScreen
 import com.vano.n8nmobile.settings.SettingsScreen
 import com.vano.n8nmobile.settings.SettingsStore
 import com.vano.n8nmobile.ui.AiwaColorScheme
@@ -95,9 +98,14 @@ import com.vano.n8nmobile.ui.AiwaHeaderGradient
 import com.vano.n8nmobile.ui.AiwaPillGradient
 import com.vano.n8nmobile.ui.AiwaThemeStore
 import com.vano.n8nmobile.ui.ThemeCustomizationScreen
+import com.vano.n8nmobile.voice.VoiceChatScreen
 import kotlinx.coroutines.launch
 
-private enum class AppScreen { CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN, AI_PROVIDERS, LOCAL_SERVER, APP_LOCK, BACKUP, HEALTH_DASHBOARD, GROUP_CHAT, DASHBOARD, COMPARE, PENDING_REPLY }
+private enum class AppScreen {
+    CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN,
+    AI_PROVIDERS, LOCAL_SERVER, APP_LOCK, BACKUP, HEALTH_DASHBOARD, GROUP_CHAT, DASHBOARD,
+    COMPARE, PENDING_REPLY, VOICE_CHAT
+}
 
 class MainActivity : FragmentActivity() {
 
@@ -121,24 +129,24 @@ class MainActivity : FragmentActivity() {
 
         FlowScheduler.scheduleIfNeeded(this)
         HealthCheckScheduler.scheduleNext(this)
+        AutoBackupScheduler.scheduleNext(this)
+        ChatStore.cleanupOldConversations(this)
 
         setContent {
             val context = LocalContext.current
             remember { AiwaThemeStore(context).loadIntoMemory() }
 
-            var isUnlocked by remember { mutableStateOf(!AppLockStore.isLockEnabled(context)) }
             val settingsStore = remember { SettingsStore(context) }
             var isDark by remember { mutableStateOf(settingsStore.darkTheme) }
             val colors = if (isDark) AiwaColorScheme else lightColorScheme()
 
+            var isUnlocked by remember { mutableStateOf(!AppLockStore.isLockEnabled(context)) }
+
             val initialConversation = remember { ChatStore.loadAll(context).firstOrNull() }
             var currentConversationId by remember { mutableStateOf(initialConversation?.id ?: ChatStore.newId()) }
             val chatMessages = remember {
-                mutableStateListOf<ChatMessage>().apply {
-                    initialConversation?.let { addAll(it.messages) }
-                }
+                mutableStateListOf<ChatMessage>().apply { initialConversation?.let { addAll(it.messages) } }
             }
-
 
             MaterialTheme(colorScheme = colors) {
                 if (!isUnlocked) {
@@ -151,13 +159,14 @@ class MainActivity : FragmentActivity() {
                     val scope = rememberCoroutineScope()
                     var conversationsList by remember { mutableStateOf(ChatStore.loadAll(context)) }
                     var chatSearchQuery by remember { mutableStateOf("") }
+                    var conversationMenuForId by remember { mutableStateOf<String?>(null) }
+                    var renamingConversationId by remember { mutableStateOf<String?>(null) }
+                    var renameText by remember { mutableStateOf("") }
 
                     ModalNavigationDrawer(
                         drawerState = drawerState,
                         drawerContent = {
-                            ModalDrawerSheet(
-                                drawerContainerColor = Color.Transparent
-                            ) {
+                            ModalDrawerSheet(drawerContainerColor = Color.Transparent) {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxSize()
@@ -168,18 +177,10 @@ class MainActivity : FragmentActivity() {
                                         Image(
                                             painter = painterResource(id = R.mipmap.ic_launcher),
                                             contentDescription = null,
-                                            modifier = Modifier
-                                                .size(48.dp)
-                                                .clip(CircleShape)
+                                            modifier = Modifier.size(48.dp).clip(CircleShape)
                                         )
                                         Spacer(modifier = Modifier.width(12.dp))
-                                        Text(
-                                            "AIWA",
-                                            color = Color.White,
-                                            fontFamily = AiwaDecorativeFont,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 26.sp
-                                        )
+                                        Text("AIWA", color = Color.White, fontFamily = AiwaDecorativeFont, fontWeight = FontWeight.ExtraBold, fontSize = 26.sp)
                                     }
 
                                     Spacer(modifier = Modifier.height(20.dp))
@@ -198,6 +199,10 @@ class MainActivity : FragmentActivity() {
                                     }
                                     AiwaDrawerButton(Icons.Default.Groups, "Grup AI") {
                                         currentScreen = AppScreen.GROUP_CHAT
+                                        scope.launch { drawerState.close() }
+                                    }
+                                    AiwaDrawerButton(Icons.Default.Mic, "Mode Suara") {
+                                        currentScreen = AppScreen.VOICE_CHAT
                                         scope.launch { drawerState.close() }
                                     }
 
@@ -237,9 +242,7 @@ class MainActivity : FragmentActivity() {
                                                     conv.messages.any { it.text.contains(chatSearchQuery, ignoreCase = true) }
                                             }
                                         }
-                                        Column(
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                             if (filteredConversations.isEmpty()) {
                                                 Text(
                                                     if (chatSearchQuery.isBlank()) "Belum ada riwayat" else "Gak ketemu",
@@ -262,64 +265,101 @@ class MainActivity : FragmentActivity() {
                                                         horizontalArrangement = Arrangement.SpaceBetween,
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        Text(
-                                                            conv.title,
-                                                            color = Color.White,
-                                                            maxLines = 1,
-                                                            modifier = Modifier
-                                                                .weight(1f)
-                                                                .padding(end = 8.dp)
-                                                        )
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(26.dp)
-                                                                .clip(CircleShape)
-                                                                .background(AiwaColors.Pink)
-                                                                .clickable {
-                                                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                                                        type = "text/plain"
-                                                                        putExtra(Intent.EXTRA_TEXT, ChatStore.exportAsText(conv))
-                                                                        putExtra(Intent.EXTRA_SUBJECT, conv.title)
-                                                                    }
-                                                                    context.startActivity(Intent.createChooser(shareIntent, "Export Percakapan"))
-                                                                },
-                                                            contentAlignment = Alignment.Center
-                                                        ) {
-                                                            Icon(
-                                                                Icons.Default.Share,
-                                                                contentDescription = "Export",
-                                                                tint = Color.White,
-                                                                modifier = Modifier.size(14.dp)
-                                                            )
+                                                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                                            if (conv.isPinned) {
+                                                                Icon(Icons.Default.Star, contentDescription = "Dipin", tint = AiwaColors.Pink, modifier = Modifier.size(14.dp))
+                                                                Spacer(modifier = Modifier.width(4.dp))
+                                                            }
+                                                            Text(conv.title, color = Color.White, maxLines = 1)
                                                         }
-                                                        Spacer(modifier = Modifier.width(4.dp))
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(26.dp)
-                                                                .clip(CircleShape)
-                                                                .background(AiwaColors.Pink)
-                                                                .clickable {
-                                                                    ChatStore.delete(context, conv.id)
-                                                                    conversationsList = ChatStore.loadAll(context)
-                                                                    if (conv.id == currentConversationId) {
-                                                                        chatMessages.clear()
-                                                                        currentConversationId = ChatStore.newId()
+                                                        Box {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(26.dp)
+                                                                    .clip(CircleShape)
+                                                                    .background(AiwaColors.Pink)
+                                                                    .clickable { conversationMenuForId = conv.id },
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                Icon(Icons.Default.MoreVert, contentDescription = "Opsi", tint = Color.White, modifier = Modifier.size(14.dp))
+                                                            }
+                                                            DropdownMenu(
+                                                                expanded = conversationMenuForId == conv.id,
+                                                                onDismissRequest = { conversationMenuForId = null }
+                                                            ) {
+                                                                DropdownMenuItem(
+                                                                    text = { Text(if (conv.isPinned) "Lepas Pin" else "Pin Percakapan") },
+                                                                    onClick = {
+                                                                        ChatStore.setPinned(context, conv.id, !conv.isPinned)
+                                                                        conversationsList = ChatStore.loadAll(context)
+                                                                        conversationMenuForId = null
                                                                     }
-                                                                },
-                                                            contentAlignment = Alignment.Center
-                                                        ) {
-                                                            Icon(
-                                                                Icons.Default.Delete,
-                                                                contentDescription = "Hapus",
-                                                                tint = Color.White,
-                                                                modifier = Modifier.size(14.dp)
-                                                            )
+                                                                )
+                                                                DropdownMenuItem(
+                                                                    text = { Text("Ganti Nama") },
+                                                                    onClick = {
+                                                                        renamingConversationId = conv.id
+                                                                        renameText = conv.title
+                                                                        conversationMenuForId = null
+                                                                    }
+                                                                )
+                                                                DropdownMenuItem(
+                                                                    text = { Text("Export") },
+                                                                    onClick = {
+                                                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                                            type = "text/plain"
+                                                                            putExtra(Intent.EXTRA_TEXT, ChatStore.exportAsText(conv))
+                                                                            putExtra(Intent.EXTRA_SUBJECT, conv.title)
+                                                                        }
+                                                                        context.startActivity(Intent.createChooser(shareIntent, "Export Percakapan"))
+                                                                        conversationMenuForId = null
+                                                                    }
+                                                                )
+                                                                DropdownMenuItem(
+                                                                    text = { Text("Hapus", color = Color.Red) },
+                                                                    onClick = {
+                                                                        ChatStore.delete(context, conv.id)
+                                                                        conversationsList = ChatStore.loadAll(context)
+                                                                        if (conv.id == currentConversationId) {
+                                                                            chatMessages.clear()
+                                                                            currentConversationId = ChatStore.newId()
+                                                                        }
+                                                                        conversationMenuForId = null
+                                                                    }
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }
                                             }
                                         }
                                     }
+                                }
+
+                                renamingConversationId?.let { renameId ->
+                                    AlertDialog(
+                                        onDismissRequest = { renamingConversationId = null },
+                                        title = { Text("Ganti Nama Percakapan") },
+                                        text = {
+                                            OutlinedTextField(
+                                                value = renameText,
+                                                onValueChange = { renameText = it },
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        },
+                                        confirmButton = {
+                                            TextButton(onClick = {
+                                                if (renameText.isNotBlank()) {
+                                                    ChatStore.renameConversation(context, renameId, renameText.trim())
+                                                    conversationsList = ChatStore.loadAll(context)
+                                                }
+                                                renamingConversationId = null
+                                            }) { Text("Simpan") }
+                                        },
+                                        dismissButton = {
+                                            TextButton(onClick = { renamingConversationId = null }) { Text("Batal") }
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -361,39 +401,9 @@ class MainActivity : FragmentActivity() {
                                 onOpenHealthDashboard = { currentScreen = AppScreen.HEALTH_DASHBOARD },
                                 onOpenDashboard = { currentScreen = AppScreen.DASHBOARD }
                             )
-                            AppScreen.HEALTH_DASHBOARD -> HealthDashboardScreen(
-                                onBack = { currentScreen = AppScreen.SETTINGS }
-                            )
-                            AppScreen.GROUP_CHAT -> GroupChatScreen(
-                                onBack = { currentScreen = AppScreen.CHAT }
-                            )
-                            AppScreen.DASHBOARD -> DashboardScreen(
-                                onBack = { currentScreen = AppScreen.SETTINGS }
-                            )
-                            AppScreen.APP_LOCK -> AppLockSettingsScreen(
-                                onBack = { currentScreen = AppScreen.SETTINGS }
-                            )
-                            AppScreen.BACKUP -> BackupRestoreScreen(
-                                onBack = { currentScreen = AppScreen.SETTINGS }
-                            )
-                            AppScreen.AI_PROVIDERS -> AiProvidersScreen(
-                                onBack = { currentScreen = AppScreen.SETTINGS }
-                            )
-                            AppScreen.LOCAL_SERVER -> LocalServerScreen(
-                                onBack = { currentScreen = AppScreen.SETTINGS }
-                            )
-                            AppScreen.IMAGE_GEN -> ImageGenScreen(
-                                onBack = { currentScreen = AppScreen.SETTINGS }
-                            )
                             AppScreen.AUTOREPLY -> AutoReplyScreen(
                                 onBack = { currentScreen = AppScreen.SETTINGS },
                                 onOpenPendingReplies = { currentScreen = AppScreen.PENDING_REPLY }
-                            )
-                            AppScreen.COMPARE -> CompareScreen(
-                                onBack = { currentScreen = AppScreen.CHAT }
-                            )
-                            AppScreen.PENDING_REPLY -> PendingReplyScreen(
-                                onBack = { currentScreen = AppScreen.AUTOREPLY }
                             )
                             AppScreen.LOCAL_AI -> LocalModelScreen(
                                 onBack = { currentScreen = AppScreen.SETTINGS },
@@ -404,6 +414,39 @@ class MainActivity : FragmentActivity() {
                             )
                             AppScreen.THEME_CUSTOM -> ThemeCustomizationScreen(
                                 onBack = { currentScreen = AppScreen.SETTINGS }
+                            )
+                            AppScreen.IMAGE_GEN -> ImageGenScreen(
+                                onBack = { currentScreen = AppScreen.SETTINGS }
+                            )
+                            AppScreen.AI_PROVIDERS -> AiProvidersScreen(
+                                onBack = { currentScreen = AppScreen.SETTINGS }
+                            )
+                            AppScreen.LOCAL_SERVER -> LocalServerScreen(
+                                onBack = { currentScreen = AppScreen.SETTINGS }
+                            )
+                            AppScreen.APP_LOCK -> AppLockSettingsScreen(
+                                onBack = { currentScreen = AppScreen.SETTINGS }
+                            )
+                            AppScreen.BACKUP -> BackupRestoreScreen(
+                                onBack = { currentScreen = AppScreen.SETTINGS }
+                            )
+                            AppScreen.HEALTH_DASHBOARD -> HealthDashboardScreen(
+                                onBack = { currentScreen = AppScreen.SETTINGS }
+                            )
+                            AppScreen.GROUP_CHAT -> GroupChatScreen(
+                                onBack = { currentScreen = AppScreen.CHAT }
+                            )
+                            AppScreen.DASHBOARD -> DashboardScreen(
+                                onBack = { currentScreen = AppScreen.SETTINGS }
+                            )
+                            AppScreen.COMPARE -> CompareScreen(
+                                onBack = { currentScreen = AppScreen.CHAT }
+                            )
+                            AppScreen.PENDING_REPLY -> PendingReplyScreen(
+                                onBack = { currentScreen = AppScreen.AUTOREPLY }
+                            )
+                            AppScreen.VOICE_CHAT -> VoiceChatScreen(
+                                onBack = { currentScreen = AppScreen.CHAT }
                             )
                         }
                     }
@@ -426,21 +469,12 @@ private fun AiwaDrawerButton(icon: ImageVector, label: String, onClick: () -> Un
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.18f)),
+            modifier = Modifier.size(36.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.18f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, contentDescription = null, tint = Color.White)
         }
         Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            label,
-            color = Color.White,
-            fontFamily = AiwaDecorativeFont,
-            fontWeight = FontWeight.Bold,
-            fontSize = 20.sp
-        )
+        Text(label, color = Color.White, fontFamily = AiwaDecorativeFont, fontWeight = FontWeight.Bold, fontSize = 20.sp)
     }
 }

@@ -5,11 +5,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
+data class ImageAttachment(val base64: String, val mimeType: String)
+
 data class Conversation(
     val id: String,
     val title: String,
     val updatedAt: Long,
-    val messages: List<ChatMessage>
+    val messages: List<ChatMessage>,
+    val isPinned: Boolean = false,
+    val isTitleManual: Boolean = false
 )
 
 object ChatStore {
@@ -31,9 +35,11 @@ object ChatStore {
                     id = obj.getString("id"),
                     title = obj.optString("title", "Percakapan"),
                     updatedAt = obj.optLong("updatedAt", 0L),
-                    messages = msgs
+                    messages = msgs,
+                    isPinned = obj.optBoolean("isPinned", false),
+                    isTitleManual = obj.optBoolean("isTitleManual", false)
                 )
-            }.sortedByDescending { it.updatedAt }
+            }.sortedWith(compareByDescending<Conversation> { it.isPinned }.thenByDescending { it.updatedAt })
         } catch (e: Exception) {
             emptyList()
         }
@@ -94,18 +100,45 @@ object ChatStore {
             array.put(JSONObject().apply {
                 put("id", conv.id); put("title", conv.title)
                 put("updatedAt", conv.updatedAt); put("messages", msgsArray)
+                put("isPinned", conv.isPinned); put("isTitleManual", conv.isTitleManual)
             })
         }
         prefs.edit().putString(KEY_CONVERSATIONS, array.toString()).apply()
     }
 
     fun save(context: Context, id: String, title: String, messages: List<ChatMessage>) {
-        val existing = loadAll(context).filterNot { it.id == id }
-        persistAll(context, existing + Conversation(id, title, System.currentTimeMillis(), messages))
+        val existing = loadAll(context)
+        val existingConv = existing.firstOrNull { it.id == id }
+        val finalTitle = if (existingConv?.isTitleManual == true) existingConv.title else title
+        val isPinned = existingConv?.isPinned ?: false
+        val isTitleManual = existingConv?.isTitleManual ?: false
+        val filtered = existing.filterNot { it.id == id }
+        persistAll(context, filtered + Conversation(id, finalTitle, System.currentTimeMillis(), messages, isPinned, isTitleManual))
+    }
+
+    fun renameConversation(context: Context, id: String, newTitle: String) {
+        val list = loadAll(context)
+        persistAll(context, list.map { if (it.id == id) it.copy(title = newTitle, isTitleManual = true) else it })
+    }
+
+    fun setPinned(context: Context, id: String, pinned: Boolean) {
+        val list = loadAll(context)
+        persistAll(context, list.map { if (it.id == id) it.copy(isPinned = pinned) else it })
     }
 
     fun delete(context: Context, id: String) {
         persistAll(context, loadAll(context).filterNot { it.id == id })
+    }
+
+    fun cleanupOldConversations(context: Context) {
+        if (!ChatRetentionStore.isEnabled(context)) return
+        val days = ChatRetentionStore.getDays(context)
+        val cutoff = System.currentTimeMillis() - days * 24 * 60 * 60_000L
+        val all = loadAll(context)
+        val toKeep = all.filter { it.isPinned || it.updatedAt >= cutoff }
+        if (toKeep.size != all.size) {
+            persistAll(context, toKeep)
+        }
     }
 
     fun exportAsText(conversation: Conversation): String {
