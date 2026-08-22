@@ -367,7 +367,8 @@ object AiClient {
     private fun callOpenAiCompatibleRaw(baseUrl: String, apiKey: String, model: String, history: List<ChatMessage>, systemPrompt: String): String {
         val trimmedBase = baseUrl.trimEnd('/')
         if (trimmedBase.isBlank()) return "Base URL AI belum diisi. Buka Settings buat masukin URL-nya."
-        val url = URL("$trimmedBase/v1/chat/completions")
+        val normalizedBase = if (trimmedBase.endsWith("/v1")) trimmedBase.removeSuffix("/v1") else trimmedBase
+        val url = URL("$normalizedBase/v1/chat/completions")
         val connection = url.openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
         connection.setRequestProperty("Content-Type", "application/json")
@@ -404,7 +405,8 @@ object AiClient {
     private fun callOpenAiCompatibleStreamingRaw(baseUrl: String, apiKey: String, model: String, history: List<ChatMessage>, systemPrompt: String, onChunk: (String) -> Unit): String {
         val trimmedBase = baseUrl.trimEnd('/')
         if (trimmedBase.isBlank()) return "Base URL AI belum diisi. Buka Settings buat masukin URL-nya."
-        val url = URL("$trimmedBase/v1/chat/completions")
+        val normalizedBase = if (trimmedBase.endsWith("/v1")) trimmedBase.removeSuffix("/v1") else trimmedBase
+        val url = URL("$normalizedBase/v1/chat/completions")
         val connection = url.openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
         connection.setRequestProperty("Content-Type", "application/json")
