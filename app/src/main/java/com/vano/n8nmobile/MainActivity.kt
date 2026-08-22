@@ -99,12 +99,16 @@ import com.vano.n8nmobile.ui.AiwaPillGradient
 import com.vano.n8nmobile.ui.AiwaThemeStore
 import com.vano.n8nmobile.ui.ThemeCustomizationScreen
 import com.vano.n8nmobile.voice.VoiceChatScreen
+import com.vano.n8nmobile.docchat.DocumentChatScreen
+import com.vano.n8nmobile.voice.TranslateScreen
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Translate
 import kotlinx.coroutines.launch
 
 private enum class AppScreen {
     CHAT, FLOW, SETTINGS, AUTOREPLY, LOCAL_AI, THEME_CUSTOM, MODEL_SETTINGS, IMAGE_GEN,
     AI_PROVIDERS, LOCAL_SERVER, APP_LOCK, BACKUP, HEALTH_DASHBOARD, GROUP_CHAT, DASHBOARD,
-    COMPARE, PENDING_REPLY, VOICE_CHAT
+    COMPARE, PENDING_REPLY, VOICE_CHAT, DOC_CHAT, TRANSLATE
 }
 
 class MainActivity : FragmentActivity() {
@@ -203,6 +207,14 @@ class MainActivity : FragmentActivity() {
                                     }
                                     AiwaDrawerButton(Icons.Default.Mic, "Mode Suara") {
                                         currentScreen = AppScreen.VOICE_CHAT
+                                        scope.launch { drawerState.close() }
+                                    }
+                                    AiwaDrawerButton(Icons.Default.Description, "Dokumen AI") {
+                                        currentScreen = AppScreen.DOC_CHAT
+                                        scope.launch { drawerState.close() }
+                                    }
+                                    AiwaDrawerButton(Icons.Default.Translate, "Terjemahan") {
+                                        currentScreen = AppScreen.TRANSLATE
                                         scope.launch { drawerState.close() }
                                     }
 
@@ -446,6 +458,12 @@ class MainActivity : FragmentActivity() {
                                 onBack = { currentScreen = AppScreen.AUTOREPLY }
                             )
                             AppScreen.VOICE_CHAT -> VoiceChatScreen(
+                                onBack = { currentScreen = AppScreen.CHAT }
+                            )
+                            AppScreen.DOC_CHAT -> DocumentChatScreen(
+                                onBack = { currentScreen = AppScreen.CHAT }
+                            )
+                            AppScreen.TRANSLATE -> TranslateScreen(
                                 onBack = { currentScreen = AppScreen.CHAT }
                             )
                         }
