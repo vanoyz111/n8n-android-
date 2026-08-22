@@ -5,7 +5,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
-data class ImageAttachment(val base64: String, val mimeType: String)
 
 data class Conversation(
     val id: String,
